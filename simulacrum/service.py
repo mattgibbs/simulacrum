@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 import asyncio
-from caproto.server import ioc_arg_parser, run
 
-from collections import defaultdict
 from caproto import (ChannelString, ChannelEnum, ChannelDouble,
                      ChannelChar, ChannelData, ChannelInteger,
                      ChannelType)
-from route_channel import (StringRoute, EnumRoute, DoubleRoute,
+from .route_channel import (StringRoute, EnumRoute, DoubleRoute,
                            CharRoute, IntegerRoute, BoolRoute,
                            ByteRoute, ShortRoute, BoolRoute)
 import re
-from arch import get_mean_and_std
 import bpm_sim.bpm as bpm
 
 route_type_map = {
@@ -44,13 +41,13 @@ default_values = {
 
 class Service(dict):
     def __init__(self):
-		super().__init__()
+        super().__init__()
         self.routes = []
         
     def add_route(self, pattern, data_type, get, put=None, new_subscription=None, remove_subscription=None):
         self.routes.append((re.compile(pattern), data_type, get, put, new_subscription, remove_subscription))
     
-    def __getitem__(self, key):
+    def __getitem__(self, pvname):
         chan = None
         for (pattern, data_type, get_route, put_route, new_subscription_route, remove_subscription_route) in self.routes:
             print("Testing {} against {}".format(pvname, pattern.pattern))
