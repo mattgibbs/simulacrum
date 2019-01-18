@@ -14,7 +14,7 @@ class BPMService(Service):
 def main():
     _, run_options = ioc_arg_parser(
         default_prefix='',
-        desc="PV black hole")
+        desc="Simulated BPM Service")
     service = BPMService()  
     run(service, **run_options)
 
