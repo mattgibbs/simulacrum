@@ -1,6 +1,6 @@
-from .orbit import BaseOrbit, Orbit, BaseBPM, StaticBPM
+from orbit import BaseOrbit, Orbit, BaseBPM, StaticBPM
 import numpy as np
-from . import model
+import model
 class SimOrbit(BaseOrbit):
     def __init__(self):
         super(SimOrbit, self).__init__(name="Simulated Orbit")

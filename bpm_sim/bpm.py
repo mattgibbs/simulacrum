@@ -1,7 +1,7 @@
 import random
 import asyncio
 from collections import defaultdict
-from .sim_orbit import SimOrbit
+from sim_orbit import SimOrbit
 class BPMSim:
     def __init__(self):
         self.orbit = SimOrbit()
