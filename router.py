@@ -11,7 +11,7 @@ from route_channel import (StringRoute, EnumRoute, DoubleRoute,
                            ByteRoute, ShortRoute, BoolRoute)
 import re
 from arch import get_mean_and_std
-import bpm
+import bpm_sim.bpm as bpm
 
 route_type_map = {
     str: CharRoute,
