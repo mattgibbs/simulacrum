@@ -2,6 +2,7 @@ import random
 import asyncio
 from collections import defaultdict
 from sim_orbit import SimOrbit
+
 class BPMSim:
     def __init__(self):
         self.orbit = SimOrbit()
@@ -21,7 +22,7 @@ class BPMSim:
                 for channel in d:
                     await channel.write(self.orbit[pvname])
             await asyncio.sleep(0.1)
-    
+
     def update_value(self):
         self.orbit.update()
 
@@ -34,9 +35,7 @@ async def put(pvname, value):
     raise Exception("Cannot put BPM values.")
 
 async def subscribe(pvname, channel):
-    print("BPM Sim got a new subscriber!")
     bpms.channels[pvname].add(channel)
 
 async def unsubscribe(pvname, channel):
-    print("BPM Sim is discarding a subscription.")
     bpms.channels[pvname].discard(channel)
