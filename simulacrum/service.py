@@ -49,16 +49,20 @@ class Service(dict):
     
     def __getitem__(self, pvname):
         chan = None
-        for (pattern, data_type, get_route, put_route, new_subscription_route, remove_subscription_route) in self.routes:
-            print("Testing {} against {}".format(pvname, pattern.pattern))
-            if pattern.match(pvname) != None:
-                chan = self.make_route_channel(pvname, data_type, get_route, put_route, new_subscription_route, remove_subscription_route)
-        if chan is None:
-            raise KeyError
-        ret = self[pvname] = chan
-        return ret
+        try:
+            return super().__getitem__(pvname)
+        except KeyError:   
+            for (pattern, data_type, get_route, put_route, new_subscription_route, remove_subscription_route) in self.routes:
+                if pattern.match(pvname) != None:
+                    chan = self.make_route_channel(pvname, data_type, get_route, put_route, new_subscription_route, remove_subscription_route)
+            if chan is None:
+                raise KeyError
+            ret = self[pvname] = chan
+            return ret
     
     def __contains__(self, key):
+        if super().__contains__(key):
+            return True
         for (pattern, data_type, get_route, put_route, new_subscription_route, remove_subscription_route) in self.routes:
             if pattern.match(pvname) != None:
                 return True
