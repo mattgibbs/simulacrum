@@ -5,11 +5,12 @@ import bpm
 class BPMService(Service):
     def __init__(self):
         super().__init__()
+        self.bpms = bpm.BPMSim()
         self.add_route("BPMS:.+:[0-9]+:(X|Y|TMIT|Z)", 
                         data_type=float,
-                        get=bpm.get,
-                        new_subscription=bpm.subscribe,
-                        remove_subscription=bpm.unsubscribe)
+                        get=self.bpms.get,
+                        new_subscription=self.bpms.subscribe,
+                        remove_subscription=self.bpms.unsubscribe)
 
 def main():
     _, run_options = ioc_arg_parser(
