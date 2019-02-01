@@ -8,7 +8,6 @@ from .route_channel import (StringRoute, EnumRoute, DoubleRoute,
                            CharRoute, IntegerRoute, BoolRoute,
                            ByteRoute, ShortRoute, BoolRoute)
 import re
-import bpm_sim.bpm as bpm
 
 route_type_map = {
     str: CharRoute,
