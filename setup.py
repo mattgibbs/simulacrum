@@ -43,5 +43,6 @@ setup(name='simulacrum',
       packages=['simulacrum'],
       python_requires='>=3.6',
       classifiers=classifiers,
+      include_package_data=True,
       install_requires=install_requires
       )
