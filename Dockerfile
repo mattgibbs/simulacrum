@@ -26,10 +26,15 @@ WORKDIR /
 RUN apt-get -y install python3 python3-pip libzmq3-dev
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN pip3 install numpy caproto pyzmq
+COPY . /simulacrum
+RUN cd /simulacrum && pip3 install . 
 COPY bpm_sim /bpm_sim
 COPY model_service /model_service
 ENV MODEL_PORT 12312
 ENV ORBIT_PORT 56789
+ENV EPICS_CA_SERVER_PORT 5064
+ENV EPICS_CA_REPEATER_PORT 5065
 EXPOSE ${MODEL_PORT}
 EXPOSE ${ORBIT_PORT}
-ENTRYPOINT cd /bmad_dist_2019_0124 && source ./bmad_env.bash && cd /model_service && python3 model_service.py
+EXPOSE ${EPICS_CA_SERVER_PORT}
+ENTRYPOINT cd /bmad_dist_2019_0124 && source ./bmad_env.bash && cd /model_service && (python3 model_service.py &) && cd /bpm_sim && python3 bpm_service.py
