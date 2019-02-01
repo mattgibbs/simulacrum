@@ -1,3 +1,4 @@
+import os
 import random
 import asyncio
 import numpy as np
@@ -14,7 +15,7 @@ class BPMSim:
         self.ctx = Context.instance()
         #cmd socket is a synchronous socket, we don't want the asyncio context.
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
-        self.cmd_socket.connect("tcp://127.0.0.1:12312")
+        self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         self.initialize_orbit()
     
     def initialize_orbit(self):
@@ -50,7 +51,7 @@ class BPMSim:
     async def recv_orbit_array(self, flags=0, copy=True, track=False):
         """recv a numpy array"""
         orbit_socket = self.ctx.socket(zmq.SUB)
-        orbit_socket.connect('tcp://127.0.0.1:56789')
+        orbit_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('ORBIT_PORT', 56789)))
         orbit_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
             print("Checking for new orbit data.")
