@@ -4,6 +4,7 @@ import asyncio
 from caproto import (ChannelString, ChannelEnum, ChannelDouble,
                      ChannelChar, ChannelData, ChannelInteger,
                      ChannelType)
+from caproto.server import PVGroup
 from .route_channel import (StringRoute, EnumRoute, DoubleRoute,
                            CharRoute, IntegerRoute, BoolRoute,
                            ByteRoute, ShortRoute, BoolRoute)
@@ -45,6 +46,13 @@ class Service(dict):
         
     def add_route(self, pattern, data_type, get, put=None, new_subscription=None, remove_subscription=None):
         self.routes.append((re.compile(pattern), data_type, get, put, new_subscription, remove_subscription))
+    
+    def add_pvs(self, pv_groups):
+        if isinstance(pv_groups, PVGroup):
+            #Handle case where you just want to add a single PV group.
+            pv_groups = {0: pv_groups}
+        for prefix, group in pv_groups.items():
+            self.update(**group.pvdb)
     
     def __getitem__(self, pvname):
         chan = None
