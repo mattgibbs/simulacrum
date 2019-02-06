@@ -7,9 +7,15 @@ import zmq
 from zmq.asyncio import Context
 
 class BPMPV(PVGroup):
-    x = pvproperty(value=0.0, name=':X', read_only=True, mock_record='ai')
-    y = pvproperty(value=0.0, name=':Y', read_only=True, mock_record='ai')
-    tmit = pvproperty(value=0.0, name=':TMIT', read_only=True, mock_record='ai')
+    x = pvproperty(value=0.0, name=':X', read_only=True, mock_record='ai', 
+                   upper_ctrl_limit=3.0, lower_ctrl_limit=-3.0,
+                   upper_disp_limit=3.0, lower_disp_limit=-3.0)
+    y = pvproperty(value=0.0, name=':Y', read_only=True, mock_record='ai', 
+                   upper_ctrl_limit=3.0, lower_ctrl_limit=-3.0,
+                   upper_disp_limit=3.0, lower_disp_limit=-3.0)
+    tmit = pvproperty(value=0.0, name=':TMIT', read_only=True, mock_record='ai', 
+                   upper_ctrl_limit=1.0e10, lower_ctrl_limit=0,
+                   upper_disp_limit=1.0e10, lower_disp_limit=0)
     z = pvproperty(value=0.0, name=':Z', read_only=True)
     
 class BPMService(simulacrum.Service):
