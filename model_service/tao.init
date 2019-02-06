@@ -22,20 +22,6 @@
     search_for_lat_eles = "Instrument::BPM*,Instrument::RFB*"
 /
 
-&tao_d2_data
-    d2_data%name = "momentum"
-    universe = 1
-    n_d1_data = 1
-/
-
-&tao_d1_data
-    ix_d1_data = 1
-    default_weight = 1
-    d1_data%name = 'momentum'
-    default_data_type = 'momentum'
-    default_data_source = 'lat'
-    search_for_lat_eles = "*"
-/
-
 set plot orbit autoscale_y = T
+
 set ele Kicker::*,Quadrupole::* field_master = T
