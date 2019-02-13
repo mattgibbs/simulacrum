@@ -23,3 +23,5 @@
 /
 
 set plot orbit autoscale_y = T
+
+set ele Kicker::*,Quadrupole::* field_master = T
