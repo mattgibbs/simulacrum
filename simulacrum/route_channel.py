@@ -33,11 +33,8 @@ class RouteChannel:
         return super().check_access(host, user)
     
     async def subscribe(self, queue, sub_spec, sub):
-        print("Channel subscription in progress...")
         if self.new_subscription:
             await self.new_subscription(self.pvname, self)
-        else:
-            print("No subscription on service!")
         return await super().subscribe(queue, sub_spec, sub)
     
     async def unsubscribe(self, queue, sub_spec):
