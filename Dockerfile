@@ -37,7 +37,7 @@ RUN pip3 install numpy caproto pyzmq
 SHELL ["/bin/bash", "-c"]
 COPY . /simulacrum
 RUN cd /simulacrum && pip3 install . 
-COPY bpm_sim /bpm_sim
+COPY bpm_service /bpm_service
 COPY model_service /model_service
 ENV MODEL_PORT 12312
 ENV ORBIT_PORT 56789
@@ -46,4 +46,5 @@ ENV EPICS_CA_REPEATER_PORT 5065
 EXPOSE ${MODEL_PORT}
 EXPOSE ${ORBIT_PORT}
 EXPOSE ${EPICS_CA_SERVER_PORT}
-ENTRYPOINT cd /bmad_dist_2019_0129 && source ./bmad_env.bash && cd /model_service && (python3 model_service.py &) && cd /bpm_sim && python3 bpm_service.py
+ENTRYPOINT cd /bmad_dist_2019_0129 && source ./bmad_env.bash && cd /model_service && python3 model_service.py
+#ENTRYPOINT cd /bmad_dist_2019_0129 && source ./bmad_env.bash && cd /model_service && (python3 model_service.py &) && cd /bpm_sim && python3 bpm_service.py
