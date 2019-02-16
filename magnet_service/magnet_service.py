@@ -8,14 +8,18 @@ import zmq
 from zmq.asyncio import Context
 
 class MagnetPV(PVGroup):
-    bcon = pvproperty(value=0.0, name=':BCON')
-    bdes = pvproperty(value=0.0, name=':BDES')
-    bact = pvproperty(value=0.0, name=':BACT', read_only=True)
+    bcon = pvproperty(value=0.0, name=':BCON', upper_ctrl_limit=0.006, lower_ctrl_limit=-0.006, precision=4)
+    bdes = pvproperty(value=0.0, name=':BDES', upper_ctrl_limit=0.006, lower_ctrl_limit=-0.006, precision=4)
+    bact = pvproperty(value=0.0, name=':BACT', read_only=True, upper_ctrl_limit=0.006, lower_ctrl_limit=-0.006, precision=4)
     ctrl_strings = ("Ready", "TRIM", "PERTURB", "BCON_TO_BDES", "SAVE_BDES",
                     "LOAD_BDES", "UNDO_BDES", "DAC_ZERO", "CALB", "STDZ",
-                    "RESET", "TURN_ON", "TURN_OFF")                
+                    "RESET", "TURN_ON", "TURN_OFF")
     ctrl = pvproperty(value=0, name=':CTRL', dtype=ChannelType.ENUM,
                       enum_strings=ctrl_strings)
+    abort = pvproperty(value=0, name=':ABORT', dtype=ChannelType.ENUM,
+                      enum_strings=("Ready", "Abort"))
+    madname = pvproperty(value="", name=':MADNAME', read_only=True, dtype=ChannelType.STRING)
+    statmsg = pvproperty(value="", name=':STATMSG', read_only=True, dtype=ChannelType.STRING)
     def __init__(self, device_name, element_name, change_callback, length, initial_value, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device_name = device_name
@@ -26,6 +30,7 @@ class MagnetPV(PVGroup):
         self.bcon._data['value'] = initial_value
         self.bdes._data['value'] = initial_value
         self.bact._data['value'] = initial_value
+        self.madname._data['value'] = element_name.upper()
         self.change_callback = change_callback
         
     @ctrl.putter
@@ -52,7 +57,7 @@ class MagnetPV(PVGroup):
             print("Warning, using a non-implemented magnet control function.")
         return 0
     
-    @pvproperty(value=0.0, name=":BCTRL")
+    @pvproperty(value=0.0, name=":BCTRL", upper_ctrl_limit=0.006, lower_ctrl_limit=-0.006, precision=4)
     async def bctrl(self, instance):
         # We have to do some hacky stuff with caproto private data
         # because otherwise, the putter method gets called any time
