@@ -1,7 +1,7 @@
 import os
 import sys
 import pickle
-TAO_PYTHON_DIR=os.environ['ACC_ROOT_DIR'] + '/tao/python'
+TAO_PYTHON_DIR='/tao'
 sys.path.insert(0, TAO_PYTHON_DIR)
 import pytao
 import numpy as np
@@ -11,7 +11,7 @@ from zmq.asyncio import Context
 
 class ModelService:
     def __init__(self):
-        self.tao = pytao.Tao()
+        self.tao = pytao.Tao(so_lib='/tao/libtao.so')
         self.tao.init("-noplot -lat lcls.lat")
         self.ctx = Context.instance()
         #self.orbit_socket = self.ctx.socket(zmq.PUB)
