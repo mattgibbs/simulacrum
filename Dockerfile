@@ -27,16 +27,17 @@ WORKDIR /bmad
 RUN source ./bmad_env.bash && ./util/dist_build_production
 
 FROM ubuntu:18.04
-COPY --from=sim_builder /bmad/production/lib/libtao.so /tao/libtao.so
-COPY --from=sim_builder /bmad/tao/python/pytao /tao/pytao
 RUN apt-get update && apt-get -y install readline-common python3 python3-pip libzmq5 libx11-6 gfortran
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN pip3 install numpy caproto pyzmq
+COPY model_service /model_service
+ENV TAO_LIB /tao/libtao.so
+COPY --from=sim_builder /bmad/production/lib/libtao.so ${TAO_LIB}
+COPY --from=sim_builder /bmad/tao/python/pytao /model_service/pytao
 SHELL ["/bin/bash", "-c"]
 COPY . /simulacrum
 RUN cd /simulacrum && pip3 install . 
 COPY bpm_service /bpm_service
-COPY model_service /model_service
 ENV MODEL_PORT 12312
 ENV ORBIT_PORT 56789
 ENV EPICS_CA_SERVER_PORT 5064
