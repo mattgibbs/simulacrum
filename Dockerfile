@@ -1,6 +1,7 @@
 FROM ubuntu:18.04 as sim_builder
+ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get -y install build-essential xterm man wget readline-common libreadline-dev sudo unzip \
+    apt-get -y install build-essential xterm man wget readline-common libreadline-dev sudo unzip \
                        cmake autoconf automake libtool m4 gfortran libtool-bin xorg xorg-dev bc \
                        libopenmpi-dev gfortran-multilib curl
 WORKDIR /tmp
