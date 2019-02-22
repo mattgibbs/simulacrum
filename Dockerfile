@@ -31,6 +31,7 @@ RUN apt-get update && apt-get -y install readline-common python3 python3-pip lib
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN pip3 install numpy caproto pyzmq
 COPY model_service /model_service
+COPY start_all_services.bash /start_all_services.bash
 ENV TAO_LIB /tao/libtao.so
 COPY --from=sim_builder /bmad/production/lib/libtao.so ${TAO_LIB}
 COPY --from=sim_builder /bmad/tao/python/pytao /model_service/pytao
