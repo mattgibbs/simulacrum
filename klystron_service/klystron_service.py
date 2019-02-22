@@ -23,15 +23,10 @@ class KlystronPV(PVGroup):
         self.device_name = device_name
         self.element_name = element_name
         self.enld._data['value'] = initial_values[0]
-        self.saved_enld = initial_values[0]  #How do I save and later reference this?
         self.pdes._data['value'] = initial_values[1]
-        self.phas._data['value'] = initial_values[1]
-        if initial_values[0] > 1:  # set to 1 if ENLD > 1
-            bc1Val = 1
-        else:
-            bc1Val = 0
-        self.bc1s._data['value'] = bc1Val
-        self.change_callback = change_callback
+        self.phas._data['value'] = initial_values[1]  
+        self.bc1s._data['value'] = 1
+        self.change_callback = change_callback 
 
     @trim.putter
     async def trim(self, instance, value):
@@ -95,11 +90,12 @@ class KlystronService(simulacrum.Service):
         elif parameter == "BEAMCODE1_STAT":
             klys_attr = "ENLD_MeV"
             if value == 1:
-                print(self)
-                #value = self.saved_enld
-                
-        print("set ele {element} {attr} = {val}".format(element=klystron_pv.element_name, attr=klys_attr, val=value))
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} {attr} = {val}".format(element=klystron_pv.element_name, attr=klys_attr, val=value)})
+                value = klystron_pv.enld.value
+            else:
+                value = 0
+        cmd = "set ele {element} {attr} = {val}".format(element=klystron_pv.element_name, attr=klys_attr, val=value)    
+        print(cmd)
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": cmd})
         print(self.cmd_socket.recv_pyobj())
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         self.cmd_socket.recv_pyobj() #Ask Matt about this receive.
