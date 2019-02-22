@@ -38,6 +38,7 @@ SHELL ["/bin/bash", "-c"]
 COPY . /simulacrum
 RUN cd /simulacrum && pip3 install . 
 COPY bpm_service /bpm_service
+COPY magnet_service /magnet_service
 ENV MODEL_PORT 12312
 ENV ORBIT_PORT 56789
 ENV EPICS_CA_SERVER_PORT 5064
