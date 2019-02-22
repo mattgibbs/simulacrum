@@ -1,8 +1,7 @@
+#!/usr/bin/env python3
 import os
 import sys
 import pickle
-TAO_PYTHON_DIR='/tao'
-sys.path.insert(0, TAO_PYTHON_DIR)
 import pytao
 import numpy as np
 import asyncio
@@ -11,13 +10,14 @@ from zmq.asyncio import Context
 
 class ModelService:
     def __init__(self):
-        self.tao = pytao.Tao(so_lib='/tao/libtao.so')
-        self.tao.init("-noplot -lat lcls.lat")
+        tao_lib = os.environ.get('TAO_LIB', '')
+        self.tao = pytao.Tao(so_lib=tao_lib)
+        path_to_lattice = os.path.join(os.path.dirname(os.path.realpath(__file__)), "lcls.lat")
+        path_to_init = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tao.init")
+        self.tao.init("-noplot -lat {lat_path} -init {init_path}".format(lat_path=path_to_lattice, init_path=path_to_init))
         self.ctx = Context.instance()
-        #self.orbit_socket = self.ctx.socket(zmq.PUB)
         self.orbit_socket = zmq.Context().socket(zmq.PUB)
         self.orbit_socket.bind("tcp://*:{}".format(os.environ.get('ORBIT_PORT', 56789)))
-        
     
     def start(self):
         print("Starting Model Service.")
@@ -104,7 +104,6 @@ class ModelService:
 
 def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
-    #return np.array([float(l) for l in text])
 
 if __name__=="__main__":
     serv = ModelService()
