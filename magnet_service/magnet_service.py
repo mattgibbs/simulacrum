@@ -1,7 +1,9 @@
 import os
 import asyncio
+import json
 from collections import OrderedDict
 from caproto.server import ioc_arg_parser, run, pvproperty, PVGroup
+from caproto.server.records import _Limits
 from caproto import ChannelType
 import simulacrum
 import zmq
@@ -16,6 +18,8 @@ class MagnetPV(PVGroup):
                     "RESET", "TURN_ON", "TURN_OFF")                
     ctrl = pvproperty(value=0, name=':CTRL', dtype=ChannelType.ENUM,
                       enum_strings=ctrl_strings)
+    madname = pvproperty(name=":MADNAME", read_only=True, dtype=ChannelType.STRING)
+    
     def __init__(self, device_name, element_name, change_callback, length, initial_value, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device_name = device_name
@@ -23,9 +27,34 @@ class MagnetPV(PVGroup):
         self.length = length
         self.saved_bdes = None
         self.bdes_for_undo = None
-        self.bcon._data['value'] = initial_value
-        self.bdes._data['value'] = initial_value
-        self.bact._data['value'] = initial_value
+        self.madname._data['value'] = element_name
+        self.bcon._data['value'] = float(initial_value['bact'])
+        self.bdes._data['value'] = float(initial_value['bact'])
+        self.bact._data['value'] = float(initial_value['bact'])
+        if 'precision' in initial_value:
+            prec = int(initial_value['precision'])
+            self.bcon._data['precision'] = prec
+            self.bdes._data['precision'] = prec
+            self.bact._data['precision'] = prec
+            self.bctrl._data['precision'] = prec
+        if 'units' in initial_value:
+            egu = initial_value['units']
+            self.bcon._data['units'] = egu
+            self.bdes._data['units'] = egu
+            self.bact._data['units'] = egu
+            self.bctrl._data['units'] = egu
+        if 'upper_ctrl_limit' in initial_value:
+            hopr = float(initial_value['upper_ctrl_limit'])
+            self.bcon._data['upper_ctrl_limit'] = hopr
+            self.bdes._data['upper_ctrl_limit'] = hopr
+            self.bact._data['upper_ctrl_limit'] = hopr
+            self.bctrl._data['upper_ctrl_limit'] = hopr
+        if 'lower_ctrl_limit' in initial_value:
+            lopr = float(initial_value['lower_ctrl_limit'])
+            self.bcon._data['lower_ctrl_limit'] = lopr
+            self.bdes._data['lower_ctrl_limit'] = lopr
+            self.bact._data['lower_ctrl_limit'] = lopr
+            self.bctrl._data['lower_ctrl_limit'] = lopr
         self.change_callback = change_callback
         
     @ctrl.putter
@@ -52,7 +81,7 @@ class MagnetPV(PVGroup):
             print("Warning, using a non-implemented magnet control function.")
         return 0
     
-    @pvproperty(value=0.0, name=":BCTRL")
+    @pvproperty(value=0.0, name=":BCTRL", mock_record='ao')
     async def bctrl(self, instance):
         # We have to do some hacky stuff with caproto private data
         # because otherwise, the putter method gets called any time
@@ -81,15 +110,15 @@ def _parse_corr_table(table):
     # This is because BMAD specifies quad strength as a gradient (T/m),
     # so the math is the same for quads and bends.
     splits = [row.split() for row in table]
-    return {simulacrum.util.convert_element_to_device(ele_name): (float(l), bl_kick_to_BACT(float(bl_kick))) for (_, ele_name, _, _, l, bl_kick) in splits if ele_name in simulacrum.util.element_names}
+    return {simulacrum.util.convert_element_to_device(ele_name): {"length": float(l), "bact": bl_kick_to_BACT(float(bl_kick))} for (_, ele_name, _, _, l, bl_kick) in splits if ele_name in simulacrum.util.element_names}
 
 def _parse_quad_table(table):
     splits = [row.split() for row in table]
-    return {simulacrum.util.convert_element_to_device(ele_name): (float(l), quad_gradient_to_BACT(float(b1_gradient), float(l))) for (_, ele_name, _, _, l, b1_gradient) in splits if ele_name in simulacrum.util.element_names}
+    return {simulacrum.util.convert_element_to_device(ele_name): {"length": float(l), "bact": quad_gradient_to_BACT(float(b1_gradient), float(l))} for (_, ele_name, _, _, l, b1_gradient) in splits if ele_name in simulacrum.util.element_names}
 
 def _parse_bend_table(table):
     splits = [row.split() for row in table]
-    return {simulacrum.util.convert_element_to_device(ele_name): (float(l), bend_b_field_to_BACT(float(b_field), float(l))) 
+    return {simulacrum.util.convert_element_to_device(ele_name): {"length": float(l), "bact": bend_b_field_to_BACT(float(b_field), float(l))} 
         for (_, ele_name, _, _, l, b_field) in splits if ele_name in simulacrum.util.element_names}
 
 def bl_kick_to_BACT(bl_kick, l=None):
@@ -125,8 +154,8 @@ class MagnetService(simulacrum.Service):
         #cmd socket is a synchronous socket, we don't want the asyncio context.
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
-        init_vals = self.get_magnet_BACTs_from_model()
-        mag_pvs = {device_name: MagnetPV(device_name, simulacrum.util.convert_device_to_element(device_name), self.on_magnet_change, length=init_vals[device_name][0], initial_value=init_vals[device_name][1], prefix=device_name) 
+        init_vals = self.get_initial_values()
+        mag_pvs = {device_name: MagnetPV(device_name, simulacrum.util.convert_device_to_element(device_name), self.on_magnet_change, length=init_vals[device_name]['length'], initial_value=init_vals[device_name], prefix=device_name) 
                     for device_name in simulacrum.util.device_names 
                     if device_name.startswith("XCOR") or device_name.startswith("YCOR") or device_name.startswith("QUAD") or device_name.startswith("BEND")}
         self.add_pvs(mag_pvs)
@@ -136,6 +165,18 @@ class MagnetService(simulacrum.Service):
         self.cmd_socket.recv_pyobj()
         
         print("Initialization complete.")
+    
+    def get_initial_values(self):
+        init_vals = self.get_magnet_BACTs_from_model()
+        path_to_limits_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "magnet_limits.json")
+        with open(path_to_limits_file) as f:
+            limits = json.load(f)
+            for device_name in init_vals:
+                init_vals[device_name]["units"] = limits[device_name]["EGU"]
+                init_vals[device_name]["precision"] = limits[device_name]["PREC"]
+                init_vals[device_name]["upper_ctrl_limit"] = limits[device_name]["HOPR"]
+                init_vals[device_name]["lower_ctrl_limit"] = limits[device_name]["LOPR"]
+        return init_vals
     
     def get_magnet_BACTs_from_model(self):
         init_vals = {}
