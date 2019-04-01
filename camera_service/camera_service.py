@@ -70,7 +70,7 @@ class ProfMonService(simulacrum.Service):
         
     async def recv_profiles(self, flags=0, copy=False, track=False):
         profile_socket = self.ctx.socket(zmq.SUB)
-        profile_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('PROFILE_PORT', 56790)))
+        profile_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('PROFILE_PORT', 12345)))
         profile_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
             print("Checking for new profile data.")
