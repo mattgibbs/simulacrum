@@ -18,7 +18,9 @@ class ModelService:
         self.ctx = Context.instance()
         self.orbit_socket = zmq.Context().socket(zmq.PUB)
         self.orbit_socket.bind("tcp://*:{}".format(os.environ.get('ORBIT_PORT', 56789)))
-    
+        self.profile_socket = zmq.Context().socket(zmq.PUB)
+        self.profile_socket.bind("tcp://*:{}".format(os.environ.get('PROFILE_PORT', 56789)))
+
     def start(self):
         print("Starting Model Service.")
         loop = asyncio.get_event_loop()
@@ -49,7 +51,7 @@ class ModelService:
             raise Exception(result)
         else:
             self.send_orbit()
-        
+            self.send_profiles_twiss 
     
     def get_orbit(self):
         #Get X Orbit
@@ -74,7 +76,14 @@ class ModelService:
         metadata = {"dtype": str(orb.dtype), "shape": orb.shape}
         self.orbit_socket.send_pyobj(metadata, zmq.SNDMORE)
         self.orbit_socket.send(orb)
-    
+
+    def send_profiles_twiss(self):
+        print('Sending Profile');
+        twiss_text = np.asarray(self.tao.cmd("show lat -at beta_a -at beta_b Instrument::OTR*,Instrument::YAG*"))
+        metadata = {"dtype": str(twiss_text.dtype), "shape": twiss_text.shape}
+        self.profile_socket.send_pyobj(metadata, zmq.SNDMORE)
+        self.profile_socket.send(np.stack(twiss_text));        
+           
     async def recv(self):
         s = self.ctx.socket(zmq.REP)
         s.bind("tcp://*:{}".format(os.environ.get('MODEL_PORT', "12312")))
@@ -101,7 +110,10 @@ class ModelService:
                     await s.send_pyobj({'status': 'fail', 'err': e})
             elif p['cmd'] == 'echo':
                     await s.send_pyobj({'status': 'ok', 'result': p['val']})
-
+            elif p['cmd'] == 'send_profiles_twiss':
+                self.send_profiles_twiss()
+                await s.send_pyobj({'status': 'ok'})
+    
 def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
 
