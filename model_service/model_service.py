@@ -51,7 +51,7 @@ class ModelService:
             raise Exception(result)
         else:
             self.send_orbit()
-            self.send_profiles_twiss 
+            self.send_profiles_twiss() 
     
     def get_orbit(self):
         #Get X Orbit
