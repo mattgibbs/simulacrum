@@ -9,57 +9,61 @@ from zmq.asyncio import Context
 import pickle
 
 class ProfMonService(simulacrum.Service):
+    default_image_size = 1024*1024
+
     def __init__(self):
         print('Initializing PVs') 
         super().__init__()
-        with open('screenProps4.dat', 'rb') as file_handle:
-            screens = pickle.load(file_handle, encoding='latin1');
-        self.screenDict = {}
-        for screenProps in screens:
-            try:
-                #cheeky way to check if my saved device names are all in model
-                simulacrum.util.convert_device_to_element(screenProps['device_name']);
-                self.screenDict[screenProps['device_name']] = screenProps
-                #print(screenProps['element_name'])
-            except KeyError:
-                continue;
 
+        #load Profmon properties from file
+        with open('screenProps5.dat', 'rb') as file_handle:
+            screens = pickle.load(file_handle);
+
+        #build dicts to translate element name/device name
+        self.ele2dev = {}
+        self.dev2ele = {}
+        self.profiles = {}
+        for screenProps in screens:
+                self.ele2dev[screenProps['element_name']] = screenProps['device_name']
+                self.dev2ele[screenProps['device_name']] = screenProps['element_name']
+                self.profiles[screenProps['device_name']] = {'props': screenProps}
  
         def ProfMonPVClassMaker(screenProps):
             pvLen = len(screenProps['device_name']);
-            image_name = screenProps['image_name'][pvLen+1:];
+            image_name = screenProps['image_name'][pvLen:];
             image_size =  int(screenProps['values'][0] * screenProps['values'][1])
             if not image_size:
-                #return None;
-                image_size = 256;
+                image_size = self.default_image_size;
+
             image= pvproperty(value=np.zeros(image_size).tolist(), name = image_name, read_only=True, mock_record='ai')
-            pvProps = { screenProps['props'][i].split(':')[3]: pvproperty(value = float(screenProps['values'][i]), name = ':' + screenProps['props'][i].split(':')[3], read_only=True, mock_record='ai') 
-                        for i in range(0, len(screenProps['props'])) if screenProps['props'][i]
-                      }
+
+            try:
+                pvProps = { screenProps['props'][i].split(':')[3]: pvproperty(value = float(screenProps['values'][i]), name = ':' + screenProps['props'][i].split(':')[3], read_only=True, mock_record='ai') 
+                            for i in range(0, len(screenProps['props'])) if screenProps['props'][i]
+                        }
+            except IndexError:
+                print(screen + ' has an invalid device name')
+                return None;
+
             pvProps['image'] = image;
             return type(screenProps['device_name'], (PVGroup,), pvProps)
- 
-        real_screens = [device_name for device_name in simulacrum.util.device_names if device_name.startswith("OTR") or device_name.startswith("YAG")]
+
         screen_pvs = {};          
-        for screen in real_screens:
-            print('PV: ' + screen);
-            try:
-                ProfClass = ProfMonPVClassMaker(self.screenDict[screen])
-            except KeyError:
-                pass
+        for screen in self.profiles:
+            print('PV: ' + screen + ' ' + self.dev2ele[screen]);
+            ProfClass = ProfMonPVClassMaker(self.profiles[screen]['props'])
             if(ProfClass):
                 screen_pvs[screen] = ProfClass(prefix = screen);
+
         self.add_pvs(screen_pvs)
         self.ctx = Context.instance()
         #cmd socket is a synchronous socket, we don't want the asyncio context.
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         
-        self.profiles = [{'device_name': i, 'element_name': simulacrum.util.convert_device_to_element(i)} for i in self.screenDict.keys()];
         print("Initialization complete.")
 
-    def get_image_size(self, screen):
-        screenProps = self.screenDict[screen];
+    def get_image_size(self, screenProps):
         screenX = screenProps['values'][0];
         screenY = screenProps['values'][1];
         return int(screenX * screenY);
@@ -80,28 +84,29 @@ class ProfMonService(simulacrum.Service):
             buf = memoryview(msg)
             A = np.frombuffer(buf, dtype=md['dtype'])
             result = A.reshape(md['shape'])[3:-3]
-            iterator = iter(result)
-            i = 0
-            while True:
-                try:
-            #for i, row in enumerate(result):
-                    row = next(iterator)
-                    ( _, name, _, _, _, beta_a, beta_b) = row.split();
-                    if(name != self.profiles[i]['element_name']):
-                        continue
-                    image_size = self.get_image_size(self.profiles[i]['device_name']);
-                    image = np.ones(image_size)* float(beta_a);
-                    self.profiles[i]['image'] = image.tolist(); 
-                    i = i+1
-                except StopIteration:
-                    break
+
+            for row in result:
+                ( _, name, _, _, _, beta_a, beta_b) = row.split();
+                devName = self.ele2dev[name];
+                if devName not in self.profiles:
+                    continue
+                image_size = self.get_image_size(self.profiles[devName]['props']);
+
+                #CGI
+                image = np.ones(image_size)* float(beta_a);
+                self.profiles[devName]['image'] = image.tolist(); 
+
             await self.publish_profiles()
 
     async def publish_profiles(self):
-        for row in self.profiles:
-            pvName = self.screenDict[row['device_name']]['image_name'][1:];
+        for key, profile in self.profiles.items():
+            pvName = profile['props']['image_name']
             if pvName in self:
-                await self[pvName].write(row['image'])
+                try:
+                    await self[pvName].write(profile['image'])
+                    print('Publishing profile: ' + key);
+                except:
+                    continue
     
 def main():
     service = ProfMonService()
