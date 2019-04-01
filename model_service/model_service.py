@@ -19,7 +19,7 @@ class ModelService:
         self.orbit_socket = zmq.Context().socket(zmq.PUB)
         self.orbit_socket.bind("tcp://*:{}".format(os.environ.get('ORBIT_PORT', 56789)))
         self.profile_socket = zmq.Context().socket(zmq.PUB)
-        self.profile_socket.bind("tcp://*:{}".format(os.environ.get('PROFILE_PORT', 56789)))
+        self.profile_socket.bind("tcp://*:{}".format(os.environ.get('PROFILE_PORT', 12345)))
 
     def start(self):
         print("Starting Model Service.")
