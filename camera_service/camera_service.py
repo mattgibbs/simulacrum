@@ -58,26 +58,13 @@ class ProfMonService(simulacrum.Service):
         self.profiles = [{'device_name': i, 'element_name': simulacrum.util.convert_device_to_element(i)} for i in self.screenDict.keys()];
         print("Initialization complete.")
 
-    def start(self):
-        print("Starting Profile Monitor Service.")
-        loop = asyncio.get_event_loop()
-        _, run_options = ioc_arg_parser(
-            default_prefix='',
-            desc="Simulated Profile Monitor Service")
-        task = loop.create_task(self.recv_profiles())
-        try:
-            loop.call_soon(self.request_profile);
-            loop.run_until_complete(task)
-        except KeyboardInterrupt:
-            task.cancel()
-      
     def get_image_size(self, screen):
         screenProps = self.screenDict[screen];
         screenX = screenProps['values'][0];
         screenY = screenProps['values'][1];
         return int(screenX * screenY);
 
-    def request_profile(self):
+    def request_profiles(self):
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
         return self.cmd_socket.recv_pyobj();
         
@@ -118,12 +105,13 @@ class ProfMonService(simulacrum.Service):
     
 def main():
     service = ProfMonService()
-    service.start()
     loop = asyncio.get_event_loop()
     _, run_options = ioc_arg_parser(
         default_prefix='',
         desc="Simulated Profile Monitor Service")
-
+    loop.create_task(service.recv_profiles())
+    loop.call_soon(service.request_profiles)
+    run(service, **run_options)
     
 if __name__ == '__main__':
     main()
