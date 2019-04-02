@@ -16,7 +16,8 @@ class ProfMonService(simulacrum.Service):
         super().__init__()
 
         #load Profmon properties from file
-        with open('screenProps5.dat', 'rb') as file_handle:
+        path_to_screen_props = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'screenProps.dat')
+        with open(path_to_screen_props, 'rb') as file_handle:
             screens = pickle.load(file_handle);
 
         #build dicts to translate element name/device name
