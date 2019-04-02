@@ -18,7 +18,7 @@ class ProfMonService(simulacrum.Service):
         #load Profmon properties from file
         path_to_screen_props = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'screenProps.dat')
         with open(path_to_screen_props, 'rb') as file_handle:
-            screens = pickle.load(file_handle);
+            screens = pickle.load(file_handle)
 
         #build dicts to translate element name/device name
         self.ele2dev = {}
@@ -30,11 +30,11 @@ class ProfMonService(simulacrum.Service):
                 self.profiles[screenProps['device_name']] = {'props': screenProps}
  
         def ProfMonPVClassMaker(screenProps):
-            pvLen = len(screenProps['device_name']);
-            image_name = screenProps['image_name'][pvLen:];
+            pvLen = len(screenProps['device_name'])
+            image_name = screenProps['image_name'][pvLen:]
             image_size =  int(screenProps['values'][0] * screenProps['values'][1])
             if not image_size:
-                image_size = self.default_image_size;
+                image_size = self.default_image_size
 
             image= pvproperty(value=np.zeros(image_size).tolist(), name = image_name, read_only=True, mock_record='ai')
 
@@ -44,17 +44,17 @@ class ProfMonService(simulacrum.Service):
                         }
             except IndexError:
                 print(screen + ' has an invalid device name')
-                return None;
+                return None
 
-            pvProps['image'] = image;
+            pvProps['image'] = image
             return type(screenProps['device_name'], (PVGroup,), pvProps)
 
-        screen_pvs = {};          
+        screen_pvs = {}          
         for screen in self.profiles:
-            print('PV: ' + screen + ' ' + self.dev2ele[screen]);
+            print('PV: ' + screen + ' ' + self.dev2ele[screen])
             ProfClass = ProfMonPVClassMaker(self.profiles[screen]['props'])
             if(ProfClass):
-                screen_pvs[screen] = ProfClass(prefix = screen);
+                screen_pvs[screen] = ProfClass(prefix = screen)
 
         self.add_pvs(screen_pvs)
         self.ctx = Context.instance()
@@ -87,7 +87,7 @@ class ProfMonService(simulacrum.Service):
             result = A.reshape(md['shape'])[3:-3]
 
             for row in result:
-                ( _, name, _, _, _, beta_a, beta_b) = row.split();
+                ( _, name, _, _, _, beta_a, beta_b) = row.split()
                 devName = self.ele2dev[name]
                 if devName not in self.profiles:
                     continue
@@ -95,7 +95,6 @@ class ProfMonService(simulacrum.Service):
                 #CGI
                 print('Calculating image for ' + devName)
                 image = self.gen_beam_image(float(beta_a), float(beta_b), self.profiles[devName]['props']['values'])
-                #image = np.ones(image_size)* float(beta_a);
                 self.profiles[devName]['image'] = image.tolist()
                 print( len(self.profiles[devName]['image']))
             await self.publish_profiles()
@@ -106,7 +105,6 @@ class ProfMonService(simulacrum.Service):
             if pvName in self:
                 try:
                     await self[pvName].write(profile['image'])
-                #    print('ublishing profile: ' + key)
                 except:
                     continue
 
@@ -114,7 +112,7 @@ class ProfMonService(simulacrum.Service):
     def gen_beam_image(self, beta_a, beta_b, props):
 
         # image parameters
-        image_size = self.get_image_size(props);
+        image_size = self.get_image_size(props)
         cal = (props[3]*1e-6 if props[3] else 1e-10)   # CCD calibration in m/pixel  
         dimX = props[6]
         dimY = props[7]
@@ -122,7 +120,7 @@ class ProfMonService(simulacrum.Service):
         centerY = props[11]
         #print("Cal: %f, dimX: %d, dimY: %d, centerX: %d, centerX: %d" % (cal, dimX, dimY, centerX, centerY))
         # beam parameters
-        emittance = 0.4e-6; 
+        emittance = 0.4e-6 
         beam_size_x = np.sqrt(beta_a*emittance)
         beam_size_y = np.sqrt(beta_b*emittance)
         print(beam_size_x*1e6) 
@@ -131,7 +129,7 @@ class ProfMonService(simulacrum.Service):
         sig_y = beam_size_y/cal
 
         #normalization of uncorrelated 2D gaussian. TODO: replace random 1000 with a physically sensible number. 
-        A = 1000./np.pi/sig_x/sig_y;
+        A = 1000./np.pi/sig_x/sig_y
 
         #generate image. TODO: get particle orbit and offset in x and y
         x = np.arange(1, dimX+1) - centerX
