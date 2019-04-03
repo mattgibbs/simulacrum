@@ -9,7 +9,7 @@ from zmq.asyncio import Context
 import pickle
 
 class ProfMonService(simulacrum.Service):
-    default_image_size = 1024*1024
+    default_image_dim = 1024
 
     def __init__(self):
         print('Initializing PVs') 
@@ -33,8 +33,11 @@ class ProfMonService(simulacrum.Service):
             pvLen = len(screenProps['device_name'])
             image_name = screenProps['image_name'][pvLen:]
             image_size =  int(screenProps['values'][0] * screenProps['values'][1])
+            
             if not image_size:
-                image_size = self.default_image_size
+                screenProps['values'][0] = self.default_image_dim
+                screenProps['values'][1] = self.default_image_dim
+                image_size = int(screenProps['values'][0] * screenProps['values'][1])
 
             image= pvproperty(value=np.zeros(image_size).tolist(), name = image_name, read_only=True, mock_record='ai')
 
@@ -64,11 +67,6 @@ class ProfMonService(simulacrum.Service):
         
         print("Initialization complete.")
 
-    def get_image_size(self, screenProps):
-        screenX = screenProps[0]
-        screenY = screenProps[1]
-        return int(screenX * screenY)
-
     def request_profiles(self):
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
         return self.cmd_socket.recv_pyobj()
@@ -93,10 +91,8 @@ class ProfMonService(simulacrum.Service):
                     continue
 
                 #CGI
-                print('Calculating image for ' + devName)
                 image = self.gen_beam_image(float(beta_a), float(beta_b), self.profiles[devName]['props']['values'])
                 self.profiles[devName]['image'] = image.tolist()
-                print( len(self.profiles[devName]['image']))
             await self.publish_profiles()
 
     async def publish_profiles(self):
@@ -112,10 +108,15 @@ class ProfMonService(simulacrum.Service):
     def gen_beam_image(self, beta_a, beta_b, props):
 
         # image parameters
-        image_size = self.get_image_size(props)
-        cal = (props[3]*1e-6 if props[3] else 1e-10)   # CCD calibration in m/pixel  
-        dimX = props[6]
-        dimY = props[7]
+        imageX = props[0]
+        imageY = props[1]
+        bit_depth = props[2]
+        cal = (props[3]*1e-6 if props[3] else 1e-10)   # resolution ie  calibration in m/pixel  
+        roiX = props[6]
+        roiY = props[7]
+        if(roiX*roiY == 0): 
+            roiX = imageX
+            roiY = imageY
         centerX = props[10]
         centerY = props[11]
         #print("Cal: %f, dimX: %d, dimY: %d, centerX: %d, centerX: %d" % (cal, dimX, dimY, centerX, centerY))
@@ -123,22 +124,28 @@ class ProfMonService(simulacrum.Service):
         emittance = 0.4e-6 
         beam_size_x = np.sqrt(beta_a*emittance)
         beam_size_y = np.sqrt(beta_b*emittance)
-        print(beam_size_x*1e6) 
         #beam parameters in pixels
         sig_x = beam_size_x/cal
         sig_y = beam_size_y/cal
 
-        #normalization of uncorrelated 2D gaussian. TODO: replace random 1000 with a physically sensible number. 
-        A = 1000./np.pi/sig_x/sig_y
-
+        #normalization of uncorrelated 2D gaussian.
+        A = 1./np.pi/sig_x/sig_y
+        #Estimate camera intensity, see profmon_simulCreate.m. basically # of e- * quantum efficiency / attenuation factor
+        q = 1e-9
+        e0 = 1.6e-19
+        qe = 2e-3
+        atten = 1
+        intensity = (q/e0)*qe/atten
         #generate image. TODO: get particle orbit and offset in x and y
-        x = np.arange(1, dimX+1) - centerX
-        y = np.arange(1, dimY+1) - centerY
+        x = np.arange(1, roiX+1) - centerX
+        y = np.arange(1, roiY+1) - centerY
         x2 = -((x/sig_x)**2)/2
         y2 = -((y/sig_y)**2)/2
         xx2, yy2 = np.meshgrid(x2, y2)
-        img = A*np.exp(xx2 + yy2)
-        return img.ravel()
+        img = intensity*A*np.exp(xx2 + yy2)
+        img = img.astype(np.uint8) if bit_depth <= 8 else img.astype(np.uint16) 
+        img_flat = np.minimum(img.ravel(), 2**bit_depth - 1) 
+        return img_flat
         
         
 def main():
