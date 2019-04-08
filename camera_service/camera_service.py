@@ -10,9 +10,19 @@ import pickle
 
 class ProfMonService(simulacrum.Service):
     default_image_dim = 1024
+    util_pvs = ['EVR:IN20:PM01:CTRL.DG0E', 'EVR:IN20:PM02:CTRL.DG1E', 'EVR:IN20:PM02:CTRL.DG0E', 'EVR:IN20:PM02:CTRL.DG0E',
+                'EVR:IN20:PM02:CTRL.DG1E', 'EVR:IN20:PM03:CTRL.DG0E', 'EVR:IN20:PM03:CTRL.DG1E', 'EVR:IN20:PM04:CTRL.DG1E',
+                'EVR:IN20:PM04:CTRL.DG0E', 'EVR:IN20:PM04:CTRL.DG0E', 'EVR:IN20:PM04:CTRL.DG1E', 'EVR:IN20:PM05:CTRL.DG1E',
+                'EVR:IN20:PM05:CTRL.DG0E', 'EVR:IN20:PM05:CTRL.DG0E', 'EVR:IN20:PM05:CTRL.DG1E', 'EVR:IN20:PM06:CTRL.DG1E',
+                'EVR:IN20:PM06:CTRL.DG0E', 'EVR:LI21:PM01:CTRL.DG1E', 'EVR:LI21:PM01:CTRL.DG0E', 'EVR:LI21:PM01:CTRL.DG0E',
+                'EVR:LI21:PM01:CTRL.DG1E', 'EVR:LI24:PM01:CTRL.DG1E', 'EVR:LI24:PM01:CTRL.DG0E', 'EVR:LTU1:PM01:CTRL.DG0E',
+                'EVR:UND1:PM03:CTRL.DG1E', 'EVR:UND1:PM03:CTRL.DG0E', 'EVR:UND1:PM03:CTRL.DG0E', 'EVR:UND1:PM03:CTRL.DG1E',
+                'EVR:UND1:PM01:CTRL.DG0E', 'EVR:IN20:PM01:CTRL.DG1E', 'YAGS:IN20:841:FRAME_RATE', 'YAGS:IN20:351:FRAME_RATE',
+                'OTRS:IN20:541:FRAME_RATE', 'OTRS:IN20:621:FRAME_RATE','YAGS:IN20:921:FRAME_RATE', 'OTRS:LI21:291:FRAME_RATE',
+                'OTRS:LI25:342:FRAME_RATE', 'CTHD:IN20:206:FRAME_RATE', 'SIOC:SYS0:ML02:AO000']                                 #last one not strictly necessary but speeds up matlab init
 
     def __init__(self):
-        print('Initializing PVs') 
+        print('Initializing PVs')
         super().__init__()
 
         #load Profmon properties from file
@@ -28,38 +38,56 @@ class ProfMonService(simulacrum.Service):
                 self.ele2dev[screenProps['element_name']] = screenProps['device_name']
                 self.dev2ele[screenProps['device_name']] = screenProps['element_name']
                 self.profiles[screenProps['device_name']] = {'props': screenProps}
- 
+
         def ProfMonPVClassMaker(screenProps):
             pvLen = len(screenProps['device_name'])
             image_name = screenProps['image_name'][pvLen:]
-            image_size =  int(screenProps['values'][0] * screenProps['values'][1])
-            
-            if not image_size:
-                screenProps['values'][0] = self.default_image_dim
-                screenProps['values'][1] = self.default_image_dim
-                image_size = int(screenProps['values'][0] * screenProps['values'][1])
 
+            if not screenProps['values'][6]*screenProps['values'][7]:
+                screenProps['values'][[0, 1, 6, 7]] = self.default_image_dim
+                #screenProps['values'][2] = self.default_image_dim
+                #screenProps['values'][6] = self.default_image_dim
+                #screenProps['values'][7] = self.default_image_dim
+
+            image_size = int(screenProps['values'][6] * screenProps['values'][7])
             image= pvproperty(value=np.zeros(image_size).tolist(), name = image_name, read_only=True, mock_record='ai')
-
+            
+            #dummy pv for EVR acquisition 
+            acquire = pvproperty(value = "Acquire", name = ':Acquisition', read_only=False, mock_record='ai');
+            frame_rate = pvproperty(value = 0, name = ':FRAME_RATE', read_only=True, mock_record='ai');
+            buf_idx =  pvproperty(value = 0, name = ':IMG_BUF_IDX', read_only=False, mock_record='ai');
+            img_save = pvproperty(value = 0, name = ':SAVE_IMG', read_only=False, mock_record='ai');
             try:
-                pvProps = { screenProps['props'][i].split(':')[3]: pvproperty(value = float(screenProps['values'][i]), name = ':' + screenProps['props'][i].split(':')[3], read_only=True, mock_record='ai') 
+                pvProps = { screenProps['props'][i].split(':')[3]: pvproperty(value = float(screenProps['values'][i]), name = ':' + screenProps['props'][i].split(':')[3], read_only=False, mock_record='ai') 
                             for i in range(0, len(screenProps['props'])) if screenProps['props'][i]
                         }
             except IndexError:
                 print(screen + ' has an invalid device name')
                 return None
-
-            pvProps['image'] = image
+            pvProps.update({'acquire': acquire, 'frame_rate': frame_rate, 'buf_idx': buf_idx, 'img_save': img_save, 'image': image})
             return type(screenProps['device_name'], (PVGroup,), pvProps)
 
-        screen_pvs = {}          
+        def UtilPVClassMaker(PVName):
+            pv = pvproperty(value = 0, name = PVName, read_only=False, mock_record='ai');
+            return type(PVName, (PVGroup,), {'pv': pv})
+
+        screen_pvs = {}         
+        util_pvs = {} 
+
         for screen in self.profiles:
             print('PV: ' + screen + ' ' + self.dev2ele[screen])
             ProfClass = ProfMonPVClassMaker(self.profiles[screen]['props'])
             if(ProfClass):
                 screen_pvs[screen] = ProfClass(prefix = screen)
 
+        for pv in self.util_pvs:
+            prefix = ':'.join(pv.split(':')[0:3])
+            suffix = pv.split(':')[3]
+            UtilPVClass = UtilPVClassMaker(':' + suffix)
+            screen_pvs[pv] = UtilPVClass(prefix = prefix)
+
         self.add_pvs(screen_pvs)
+        self.add_pvs(util_pvs)
         self.ctx = Context.instance()
         #cmd socket is a synchronous socket, we don't want the asyncio context.
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
