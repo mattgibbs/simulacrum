@@ -10,16 +10,16 @@ import pickle
 
 class ProfMonService(simulacrum.Service):
     default_image_dim = 1024
-    util_pvs = ['EVR:IN20:PM01:CTRL.DG0E', 'EVR:IN20:PM02:CTRL.DG1E', 'EVR:IN20:PM02:CTRL.DG0E', 'EVR:IN20:PM02:CTRL.DG0E',
-                'EVR:IN20:PM02:CTRL.DG1E', 'EVR:IN20:PM03:CTRL.DG0E', 'EVR:IN20:PM03:CTRL.DG1E', 'EVR:IN20:PM04:CTRL.DG1E',
-                'EVR:IN20:PM04:CTRL.DG0E', 'EVR:IN20:PM04:CTRL.DG0E', 'EVR:IN20:PM04:CTRL.DG1E', 'EVR:IN20:PM05:CTRL.DG1E',
-                'EVR:IN20:PM05:CTRL.DG0E', 'EVR:IN20:PM05:CTRL.DG0E', 'EVR:IN20:PM05:CTRL.DG1E', 'EVR:IN20:PM06:CTRL.DG1E',
-                'EVR:IN20:PM06:CTRL.DG0E', 'EVR:LI21:PM01:CTRL.DG1E', 'EVR:LI21:PM01:CTRL.DG0E', 'EVR:LI21:PM01:CTRL.DG0E',
-                'EVR:LI21:PM01:CTRL.DG1E', 'EVR:LI24:PM01:CTRL.DG1E', 'EVR:LI24:PM01:CTRL.DG0E', 'EVR:LTU1:PM01:CTRL.DG0E',
-                'EVR:UND1:PM03:CTRL.DG1E', 'EVR:UND1:PM03:CTRL.DG0E', 'EVR:UND1:PM03:CTRL.DG0E', 'EVR:UND1:PM03:CTRL.DG1E',
-                'EVR:UND1:PM01:CTRL.DG0E', 'EVR:IN20:PM01:CTRL.DG1E', 'YAGS:IN20:841:FRAME_RATE', 'YAGS:IN20:351:FRAME_RATE',
-                'OTRS:IN20:541:FRAME_RATE', 'OTRS:IN20:621:FRAME_RATE','YAGS:IN20:921:FRAME_RATE', 'OTRS:LI21:291:FRAME_RATE',
-                'OTRS:LI25:342:FRAME_RATE', 'CTHD:IN20:206:FRAME_RATE', 'SIOC:SYS0:ML02:AO000']                                 #last one not strictly necessary but speeds up matlab init
+    util_pvs = ['EVR:IN20:PM01:CTRL.DG0E', 'EVR:IN20:PM02:CTRL.DG1E', 'EVR:IN20:PM02:CTRL.DG0E',
+                'EVR:IN20:PM03:CTRL.DG0E', 'EVR:IN20:PM03:CTRL.DG1E', 'EVR:IN20:PM04:CTRL.DG1E',
+                'EVR:IN20:PM04:CTRL.DG0E', 'EVR:IN20:PM05:CTRL.DG1E', 'EVR:IN20:PM05:CTRL.DG0E',
+                'EVR:IN20:PM06:CTRL.DG1E', 'EVR:IN20:PM06:CTRL.DG0E', 'EVR:LI21:PM01:CTRL.DG1E', 
+                'EVR:LI21:PM01:CTRL.DG0E', 'EVR:LI24:PM01:CTRL.DG1E', 'EVR:LI24:PM01:CTRL.DG0E', 
+                'EVR:LTU1:PM01:CTRL.DG0E', 'EVR:UND1:PM03:CTRL.DG1E', 'EVR:UND1:PM03:CTRL.DG0E',
+                'EVR:UND1:PM01:CTRL.DG0E', 'EVR:IN20:PM01:CTRL.DG1E', 'YAGS:IN20:841:FRAME_RATE', 
+                'YAGS:IN20:351:FRAME_RATE', 'OTRS:IN20:541:FRAME_RATE', 'OTRS:IN20:621:FRAME_RATE',
+                'YAGS:IN20:921:FRAME_RATE', 'OTRS:LI21:291:FRAME_RATE', 'OTRS:LI25:342:FRAME_RATE', 
+                'CTHD:IN20:206:FRAME_RATE', 'SIOC:SYS0:ML02:AO000'] #last one not strictly necessary but speeds up matlab init
 
     def __init__(self):
         print('Initializing PVs')
@@ -112,14 +112,22 @@ class ProfMonService(simulacrum.Service):
             A = np.frombuffer(buf, dtype=md['dtype'])
             result = A.reshape(md['shape'])[3:-3]
 
-            for row in result:
+            print("Checking for new profile orbits.")
+            md = await profile_socket.recv_pyobj(flags=flags)
+            print("Profile orbit incoming: ", md)
+            msg = await profile_socket.recv(flags=flags, copy=copy, track=track)
+            buf = memoryview(msg)
+            A = np.frombuffer(buf, dtype=md['dtype'])
+            orbit = A.reshape(md['shape'])
+
+            for i, row in enumerate(result):
                 ( _, name, _, _, _, beta_a, beta_b) = row.split()
                 devName = self.ele2dev[name]
                 if devName not in self.profiles:
                     continue
 
                 #CGI
-                image = self.gen_beam_image(float(beta_a), float(beta_b), self.profiles[devName]['props']['values'])
+                image = self.gen_beam_image(float(beta_a), float(beta_b), orbit[0][i], orbit[1][i],  self.profiles[devName]['props']['values'])
                 self.profiles[devName]['image'] = image.tolist()
             await self.publish_profiles()
 
@@ -133,7 +141,7 @@ class ProfMonService(simulacrum.Service):
                     continue
 
     # Generate 2D gaussian from orbit & betas.
-    def gen_beam_image(self, beta_a, beta_b, props):
+    def gen_beam_image(self, beta_a, beta_b, x, y, props):
 
         # image parameters
         imageX = props[0]
@@ -155,7 +163,8 @@ class ProfMonService(simulacrum.Service):
         #beam parameters in pixels
         sig_x = beam_size_x/cal
         sig_y = beam_size_y/cal
-
+        xPos = 1e-3*x/cal
+        yPos = 1e-3*y/cal
         #normalization of uncorrelated 2D gaussian.
         A = 1./np.pi/sig_x/sig_y
         #Estimate camera intensity, see profmon_simulCreate.m. basically # of e- * quantum efficiency / attenuation factor
@@ -165,8 +174,8 @@ class ProfMonService(simulacrum.Service):
         atten = 1
         intensity = (q/e0)*qe/atten
         #generate image. TODO: get particle orbit and offset in x and y
-        x = np.arange(1, roiX+1) - centerX
-        y = np.arange(1, roiY+1) - centerY
+        x = np.arange(1, roiX+1) - centerX - xPos
+        y = np.arange(1, roiY+1) - centerY - yPos
         x2 = -((x/sig_x)**2)/2
         y2 = -((y/sig_y)**2)/2
         xx2, yy2 = np.meshgrid(x2, y2)

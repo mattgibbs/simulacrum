@@ -61,6 +61,15 @@ class ModelService:
         y_orb_text = self.tao.cmd("show data orbit.y")[3:-2]
         y_orb = _orbit_array_from_text(y_orb_text)
         return np.stack((x_orb, y_orb))
+
+    def get_prof_orbit(self):
+        #Get X Orbit
+        x_orb_text = self.tao.cmd("show data orbit.profx")[3:-2]
+        x_orb = _orbit_array_from_text(x_orb_text)
+        #Get Y Orbit
+        y_orb_text = self.tao.cmd("show data orbit.profy")[3:-2]
+        y_orb = _orbit_array_from_text(y_orb_text)
+        return np.stack((x_orb, y_orb))
     
     def old_get_orbit(self):
         #Get X Orbit
@@ -76,6 +85,12 @@ class ModelService:
         metadata = {"dtype": str(orb.dtype), "shape": orb.shape}
         self.orbit_socket.send_pyobj(metadata, zmq.SNDMORE)
         self.orbit_socket.send(orb)
+
+    def send_prof_orbit(self):
+        orb = self.get_prof_orbit()
+        metadata = {"dtype": str(orb.dtype), "shape": orb.shape}
+        self.profile_socket.send_pyobj(metadata, zmq.SNDMORE)
+        self.profile_socket.send(orb)
 
     def send_profiles_twiss(self):
         print('Sending Profile');
@@ -112,6 +127,7 @@ class ModelService:
                     await s.send_pyobj({'status': 'ok', 'result': p['val']})
             elif p['cmd'] == 'send_profiles_twiss':
                 self.send_profiles_twiss()
+                self.send_prof_orbit()
                 await s.send_pyobj({'status': 'ok'})
     
 def _orbit_array_from_text(text):
