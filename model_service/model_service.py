@@ -52,6 +52,7 @@ class ModelService:
         else:
             self.send_orbit()
             self.send_profiles_twiss() 
+            self.send_prof_orbit()
     
     def get_orbit(self):
         #Get X Orbit
