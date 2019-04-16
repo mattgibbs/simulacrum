@@ -7,6 +7,7 @@ import zmq
 import time
 from zmq.asyncio import Context
 import pickle
+import matplotlib.pyplot as pl
 
 class ProfMonService(simulacrum.Service):
     default_image_dim = 1024
@@ -127,7 +128,8 @@ class ProfMonService(simulacrum.Service):
                     continue
 
                 #CGI
-                image = self.gen_beam_image(float(beta_a), float(beta_b), orbit[0][i], orbit[1][i],  self.profiles[devName]['props']['values'])
+                beamProps = {'beta_a': float(beta_a), 'beta_b': float(beta_b), 'x': orbit[0][i], 'y': orbit[1][i]}
+                image = self.gen_beam_image(beamProps, self.profiles[devName]['props']['values'], smooth=False)
                 self.profiles[devName]['image'] = image.tolist()
             await self.publish_profiles()
 
@@ -141,20 +143,21 @@ class ProfMonService(simulacrum.Service):
                     continue
 
     # Generate 2D gaussian from orbit & betas.
-    def gen_beam_image(self, beta_a, beta_b, x, y, props):
+    def gen_beam_image(self, beamProps, camProps, smooth = True):
 
+        beta_a, beta_b, x, y = beamProps['beta_a'], beamProps['beta_b'], beamProps['x'], beamProps['y']
         # image parameters
-        imageX = props[0]
-        imageY = props[1]
-        bit_depth = props[2]
-        cal = (props[3]*1e-6 if props[3] else 1e-10)   # resolution ie  calibration in m/pixel  
-        roiX = props[6]
-        roiY = props[7]
+        imageX = camProps[0]
+        imageY = camProps[1]
+        bit_depth = camProps[2]
+        cal = (camProps[3]*1e-6 if camProps[3] else 1e-5)   # resolution ie  calibration in m/pixel  
+        roiX = camProps[6]
+        roiY = camProps[7]
         if(roiX*roiY == 0): 
             roiX = imageX
             roiY = imageY
-        centerX = props[10]
-        centerY = props[11]
+        centerX = camProps[10]
+        centerY = camProps[11]
         #print("Cal: %f, dimX: %d, dimY: %d, centerX: %d, centerX: %d" % (cal, dimX, dimY, centerX, centerY))
         # beam parameters
         emittance = 0.4e-6 
@@ -173,13 +176,23 @@ class ProfMonService(simulacrum.Service):
         qe = 2e-3
         atten = 1
         intensity = (q/e0)*qe/atten
+        n_part = int(1e6)
         #generate image. TODO: get particle orbit and offset in x and y
         x = np.arange(1, roiX+1) - centerX - xPos
         y = np.arange(1, roiY+1) - centerY - yPos
-        x2 = -((x/sig_x)**2)/2
-        y2 = -((y/sig_y)**2)/2
-        xx2, yy2 = np.meshgrid(x2, y2)
-        img = intensity*A*np.exp(xx2 + yy2)
+        if(smooth):
+            x2 = -((x/sig_x)**2)/2
+            y2 = -((y/sig_y)**2)/2
+            xx2, yy2 = np.meshgrid(x2, y2)
+            img = intensity*A*np.exp(xx2 + yy2)
+        else:
+            if('particlePos' not in beamProps):
+                px = np.random.normal(0, sig_x, n_part)
+                py = np.random.normal(0, sig_y, n_part)
+                x = np.append(x - 0.5, x[-1]+0.5)
+                y = np.append(y - 0.5, y[-1]+0.5)
+                (h, _,_, _) = pl.hist2d(py, px, bins = [y, x]) 
+                img = intensity/n_part*h
         img = img.astype(np.uint8) if bit_depth <= 8 else img.astype(np.uint16) 
         img_flat = np.minimum(img.ravel(), 2**bit_depth - 1) 
         return img_flat
