@@ -7,7 +7,6 @@ import zmq
 import time
 from zmq.asyncio import Context
 import pickle
-import matplotlib.pyplot as pl
 
 class ProfMonService(simulacrum.Service):
     default_image_dim = 1024
@@ -191,7 +190,7 @@ class ProfMonService(simulacrum.Service):
                 py = np.random.normal(0, sig_y, n_part)
                 x = np.append(x - 0.5, x[-1]+0.5)
                 y = np.append(y - 0.5, y[-1]+0.5)
-                (h, _,_, _) = pl.hist2d(py, px, bins = [y, x]) 
+                (h, _,_) = np.histogram2d(py, px, bins = (y, x)) 
                 img = intensity/n_part*h
         img = img.astype(np.uint8) if bit_depth <= 8 else img.astype(np.uint16) 
         img_flat = np.minimum(img.ravel(), 2**bit_depth - 1) 
