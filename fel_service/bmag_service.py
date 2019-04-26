@@ -68,21 +68,21 @@ class BMAGService(simulacrum.Service):
     
     #listen for twiss objects from model
     def request_twiss(self):
-        self.cmd_socket.send_pyobj({"cmd" : "send_twiss"})
+        self.cmd_socket.send_pyobj({"cmd" : "send_und_twiss"})
         return self.cmd_socket.recv_pyobj()
    
     #accept twiss list from model
     async def recv_twiss_list(self, flags=0, copy=False, track=False):
-        twiss_socket = self.ctx.socket(zmq.SUB)
-        twiss_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('ORBIT_PORT', 56789)))
-        twiss_socket.setsockopt(zmq.SUBSCRIBE, b'')
+        model_broadcast_socket = self.ctx.socket(zmq.SUB)
+        model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
+        model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
             print("Checking for new twiss data.")
-            md = await twiss_socket.recv_pyobj(flags=flags)
+            md = await model_broadcast_socket.recv_pyobj(flags=flags)
             print("Some data incoming: ", md)
-            if md.get("tag", None) == "twiss":
+            if md.get("tag", None) == "und_twiss":
                 print("Twiss data incoming: ", md)
-                msg = await twiss_socket.recv_pyobj(flags=flags) #does this look right if I am sending twiss list as a pyobj? 
+                msg = await model_broadcast_socket.recv_pyobj(flags=flags) #does this look right if I am sending twiss list as a pyobj? 
                 print('received from model: ', msg)
                 self.model = self.get_data(msg)
                 print(self.model)
@@ -90,7 +90,7 @@ class BMAGService(simulacrum.Service):
                 print(self.bmag)
                 await self['GDET:FEE1:241:ENRC'].write(self.bmag)
             else: 
-                msg = await twiss_socket.recv(flags=flags)
+                msg = await model_broadcast_socket.recv(flags=flags)
 
 
 def main():
