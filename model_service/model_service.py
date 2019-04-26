@@ -53,6 +53,8 @@ class ModelService:
             self.send_orbit()
             self.send_profiles_twiss() 
             self.send_prof_orbit()
+            self.send_twiss()
+        
     
     def get_orbit(self):
         #Get X Orbit
@@ -72,6 +74,15 @@ class ModelService:
         y_orb = _orbit_array_from_text(y_orb_text)
         return np.stack((x_orb, y_orb))
     
+  
+
+    def get_twiss(self):
+        twiss_text = self.tao.cmd("show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b UNDSTART")
+        #format to list of comma separated values
+        print('twiss from get_twiss: ', twiss_text)
+        twiss = twiss_text[0].split()
+        return twiss
+
     def old_get_orbit(self):
         #Get X Orbit
         x_orb_text = self.tao.cmd("python lat_list 1@0>>BPM*|model orbit.vec.1")
@@ -100,6 +111,14 @@ class ModelService:
         self.profile_socket.send_pyobj(metadata, zmq.SNDMORE)
         self.profile_socket.send(np.stack(twiss_text));        
            
+    #can I use the same socket? 
+    def send_twiss(self):
+        twiss = self.get_twiss()
+        metadata = {"tag": 'twiss'}
+        self.orbit_socket.send_pyobj(metadata, zmq.SNDMORE)
+        #i think it's ok to just send a pyobj since twiss = a list of four items
+        self.orbit_socket.send_pyobj(twiss)
+    
     async def recv(self):
         s = self.ctx.socket(zmq.REP)
         s.bind("tcp://*:{}".format(os.environ.get('MODEL_PORT', "12312")))
@@ -130,7 +149,11 @@ class ModelService:
                 self.send_profiles_twiss()
                 self.send_prof_orbit()
                 await s.send_pyobj({'status': 'ok'})
+            elif p['cmd'] == 'send_twiss':
+                self.send_twiss()
+                await s.send_pyobj({'status': 'ok'})
     
+
 def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
 
