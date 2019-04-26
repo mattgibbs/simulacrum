@@ -99,28 +99,36 @@ class ProfMonService(simulacrum.Service):
     def request_profiles(self):
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
         return self.cmd_socket.recv_pyobj()
-        
+       
+    ################### 04.26 Jane added tag metadata filtering. Small possibility that last two blocks of this function may crash if data with another tag comes in and result/orbit are never assigned. Did not get a chance to test yet. 
     async def recv_profiles(self, flags=0, copy=False, track=False):
-        profile_socket = self.ctx.socket(zmq.SUB)
-        profile_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('PROFILE_PORT', 12345)))
-        profile_socket.setsockopt(zmq.SUBSCRIBE, b'')
+        model_broadcast_socket = self.ctx.socket(zmq.SUB)
+        model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
+        model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
             print("Checking for new profile data.")
-            md = await profile_socket.recv_pyobj(flags=flags)
+            md = await model_broadcast_socket.recv_pyobj(flags=flags)
             print("Profile data incoming: ", md)
-            msg = await profile_socket.recv(flags=flags, copy=copy, track=track)
-            buf = memoryview(msg)
-            A = np.frombuffer(buf, dtype=md['dtype'])
-            result = A.reshape(md['shape'])[3:-3]
+            if md.get("tag", None) == "prof_twiss":
+                msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+                buf = memoryview(msg)
+                A = np.frombuffer(buf, dtype=md['dtype'])
+                result = A.reshape(md['shape'])[3:-3]
+            else:
+                await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+                
 
             print("Checking for new profile orbits.")
-            md = await profile_socket.recv_pyobj(flags=flags)
+            md = await model_broadcast_socket.recv_pyobj(flags=flags)
             print("Profile orbit incoming: ", md)
-            msg = await profile_socket.recv(flags=flags, copy=copy, track=track)
-            buf = memoryview(msg)
-            A = np.frombuffer(buf, dtype=md['dtype'])
-            orbit = A.reshape(md['shape'])
-
+            if md.get("tag", None) == "prof_orbit":
+                msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+                buf = memoryview(msg)
+                A = np.frombuffer(buf, dtype=md['dtype'])
+                orbit = A.reshape(md['shape'])
+            else:
+                await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+        
             for i, row in enumerate(result):
                 ( _, name, _, _, _, beta_a, beta_b) = row.split()
                 devName = self.ele2dev[name]
