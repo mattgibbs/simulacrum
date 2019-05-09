@@ -43,7 +43,8 @@ class BPMService(simulacrum.Service):
                 orbit['device_name'][i] = simulacrum.util.convert_element_to_device(name)
             except KeyError:
                 pass
-            orbit['z'][i] = z
+            orbit['z'][i] = float(z)
+        orbit = np.sort(orbit,order='z')
         return orbit
     
     async def publish_z(self):
