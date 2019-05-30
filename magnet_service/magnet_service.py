@@ -197,6 +197,11 @@ class MagnetService(simulacrum.Service):
         print(self.cmd_socket.recv_pyobj())
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         self.cmd_socket.recv_pyobj()
+        self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
+        self.cmd_socket.recv_pyobj()
+        self.cmd_socket.send_pyobj({"cmd": "send_und_twiss"})
+        self.cmd_socket.recv_pyobj()
+       
 
 def main():
     service = MagnetService()

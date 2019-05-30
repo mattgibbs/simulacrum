@@ -83,22 +83,21 @@ class KlystronService(simulacrum.Service):
         return init_vals
  
     def on_klystron_change(self, klystron_pv, value, parameter):
+        element = klystron_pv.element_name
         if parameter == "PHAS":
             klys_attr = "Phase_Deg"
         elif parameter == "ENLD": 
             klys_attr = "ENLD_MeV"
         elif parameter == "BEAMCODE1_STAT":
-            klys_attr = "ENLD_MeV"
-            if value == 1:
-                value = klystron_pv.enld.value
-            else:
-                value = 0
-        cmd = "set ele {element} {attr} = {val}".format(element=klystron_pv.element_name, attr=klys_attr, val=value)    
+            klys_attr = "is_on"
+            value =  'T' if value else 'F'
+            element = element[2:]+'*'  #O_K30_8 overlay to K30_8*
+        cmd = f'set ele {element} {klys_attr} = {value}'
         print(cmd)
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": cmd})
         print(self.cmd_socket.recv_pyobj())
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
-        self.cmd_socket.recv_pyobj() #Ask Matt about this receive.
+        self.cmd_socket.recv_pyobj()
    
 def main():
     service = KlystronService()

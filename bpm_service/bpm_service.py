@@ -43,7 +43,8 @@ class BPMService(simulacrum.Service):
                 orbit['device_name'][i] = simulacrum.util.convert_element_to_device(name)
             except KeyError:
                 pass
-            orbit['z'][i] = z
+            orbit['z'][i] = float(z)
+        orbit = np.sort(orbit,order='z')
         return orbit
     
     async def publish_z(self):
@@ -59,21 +60,25 @@ class BPMService(simulacrum.Service):
         
     async def recv_orbit_array(self, flags=0, copy=False, track=False):
         """recv a numpy array"""
-        orbit_socket = self.ctx.socket(zmq.SUB)
-        orbit_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('ORBIT_PORT', 56789)))
-        orbit_socket.setsockopt(zmq.SUBSCRIBE, b'')
+        model_broadcast_socket = self.ctx.socket(zmq.SUB)
+        model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
+        model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
             print("Checking for new orbit data.")
-            md = await orbit_socket.recv_pyobj(flags=flags)
+            md = await model_broadcast_socket.recv_pyobj(flags=flags)
             print("Orbit data incoming: ", md)
-            msg = await orbit_socket.recv(flags=flags, copy=copy, track=track)
-            buf = memoryview(msg)
-            A = np.frombuffer(buf, dtype=md['dtype'])
-            A = A.reshape(md['shape'])
-            self.orbit['x'] = A[0]
-            self.orbit['y'] = A[1]
-            print(self.orbit)
-            await self.publish_orbit()
+            if md.get("tag", None) == "orbit":
+                msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+                buf = memoryview(msg)
+                A = np.frombuffer(buf, dtype=md['dtype'])
+                A = A.reshape(md['shape'])
+                self.orbit['x'] = A[0]
+                self.orbit['y'] = A[1]
+                print(self.orbit)
+                await self.publish_orbit()
+            else: 
+                await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+                 
             
     async def publish_orbit(self):
         for row in self.orbit:
