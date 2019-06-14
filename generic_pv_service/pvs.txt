@@ -1,0 +1,10 @@
+# Define your PVs in here.
+# Lines that begin with "#" are comments, and ignored by the service.
+# The format is as follows:
+# PV_NAME TYPE INITIAL_VAL
+# Where PV_NAME is what you want the PV to be called
+# TYPE is a string corresponding to a python type: (str, float, int, bool, or bytes)
+# INITIAL_VAL is the value you want the PV to have at the start.
+# Here's a full example:
+# GDET:FEE1:241:ENRC float 3.3
+# Will create a PV called GDET:FEE1:241:ENRC, that holds a floating point number, initially 3.3
