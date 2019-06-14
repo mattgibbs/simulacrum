@@ -74,7 +74,7 @@ def make_channel(pvname, data_type, initial_value=None):
         channel_class = channel_type_map[data_type]
         return channel_class(value=initial_value)
     else:
-        raise ValueError("Router doesn't know what EPICS type to use for Python type {}".format(data_type))
+        raise ValueError("Generic PV service doesn't know what EPICS type to use for Python type {}".format(data_type))
 
 class GenericPVService(simulacrum.Service):
     def __init__(self):
