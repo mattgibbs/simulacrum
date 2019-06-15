@@ -1,3 +1,4 @@
+import os
 from caproto import (ChannelString, ChannelEnum, ChannelDouble,
                      ChannelChar, ChannelData, ChannelInteger,
                      ChannelByte, ChannelShort, AccessRights,
@@ -79,7 +80,8 @@ def make_channel(pvname, data_type, initial_value=None):
 class GenericPVService(simulacrum.Service):
     def __init__(self):
         super().__init__()
-        with open("pvs.txt") as f:
+        path_to_pv_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "pvs.txt")
+        with open(path_to_pv_file) as f:
             for line in f:
                 if line.startswith("#"):
                     continue
