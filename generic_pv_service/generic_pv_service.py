@@ -86,6 +86,8 @@ class GenericPVService(simulacrum.Service):
                 if line.startswith("#"):
                     continue
                 pv_args = line.split(None, 2)
+                if len(pv_args) == 0:
+                    continue
                 pv = pv_args[0]
                 type_for_pv = pv_args[1]
                 initial_value = None
