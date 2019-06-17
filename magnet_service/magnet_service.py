@@ -18,7 +18,18 @@ class MagnetPV(PVGroup):
                     "RESET", "TURN_ON", "TURN_OFF")                
     ctrl = pvproperty(value=0, name=':CTRL', dtype=ChannelType.ENUM,
                       enum_strings=ctrl_strings)
+    func = pvproperty(value=0, name=':FUNC', dtype=ChannelType.ENUM,
+                      enum_strings=ctrl_strings)
     madname = pvproperty(name=":MADNAME", read_only=True, dtype=ChannelType.STRING)
+    statmsg = pvproperty(value="Ready", name=':STATMSG', read_only=True, dtype=ChannelType.STRING)
+    abort = pvproperty(value=0, name=':ABORT', dtype=ChannelType.ENUM,
+                      enum_strings=("Ready", "Abort"))
+    select = pvproperty(value=0, name=':SELECT', dtype=ChannelType.ENUM, enum_strings=("NO", "YES"))
+    selecten = pvproperty(value=0, name=':SELECTEN', dtype=ChannelType.ENUM, enum_strings=("NO", "YES"))
+    bdesegu = pvproperty(name=":BDES.EGU", read_only=True, dtype=ChannelType.STRING)
+    bactegu = pvproperty(name=":BACT.EGU", read_only=True, dtype=ChannelType.STRING)
+    bctrlegu = pvproperty(name=":BCTRL.EGU", read_only=True, dtype=ChannelType.STRING)
+    bconegu = pvproperty(name=":BCON.EGU", read_only=True, dtype=ChannelType.STRING)
     
     def __init__(self, device_name, element_name, change_callback, length, initial_value, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -43,18 +54,24 @@ class MagnetPV(PVGroup):
             self.bdes._data['units'] = egu
             self.bact._data['units'] = egu
             self.bctrl._data['units'] = egu
+            self.bconegu._data['value'] = egu
+            self.bdesegu._data['value'] = egu
+            self.bactegu._data['value'] = egu
+            self.bctrlegu._data['value'] = egu
         if 'upper_ctrl_limit' in initial_value:
             hopr = float(initial_value['upper_ctrl_limit'])
             self.bcon._data['upper_ctrl_limit'] = hopr
             self.bdes._data['upper_ctrl_limit'] = hopr
             self.bact._data['upper_ctrl_limit'] = hopr
             self.bctrl._data['upper_ctrl_limit'] = hopr
+            self.bctrl._data['upper_disp_limit'] = hopr
         if 'lower_ctrl_limit' in initial_value:
             lopr = float(initial_value['lower_ctrl_limit'])
             self.bcon._data['lower_ctrl_limit'] = lopr
             self.bdes._data['lower_ctrl_limit'] = lopr
             self.bact._data['lower_ctrl_limit'] = lopr
             self.bctrl._data['lower_ctrl_limit'] = lopr
+            self.bctrl._data['lower_disp_limit'] = lopr
         self.change_callback = change_callback
         
     @ctrl.putter
