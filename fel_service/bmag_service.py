@@ -15,8 +15,10 @@ from zmq.asyncio import Context
 #hist [array] gets updated on timer with data value
 #---------------------------------------STOPPERS--------------------------------------------#
 class BMAGPV(PVGroup):
-    bmag = pvproperty(value=[0.0, 0.0], name=':ENRC', read_only=True)
-    #hist = pvproperty(value=0, name=':ENRCHSTBR', read_only=True)
+    Xbmag = pvproperty(value= 0.0, name=':ENRCX', read_only=True)
+    Ybmag = pvproperty(value=0.0, name=':ENRCY', read_only=True)
+    bmag = pvproperty(value=0.0, name=':ENRC', read_only=True)
+    hist = pvproperty(value=np.zeros(120).tolist(), name=':ENRCHSTBR', read_only=True)
 
 class BMAGService(simulacrum.Service):
     #initialize service
@@ -40,7 +42,10 @@ class BMAGService(simulacrum.Service):
         self.cmd_socket.send_pyobj({"cmd" : "tao", "val" : "show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b UNDSTART"})
         self.model = self.get_init_data()
         #initialize bmag values
-        self['GDET:FEE1:241:ENRC'].write(self.calc_bmag())
+        print('Buffer ', self['GDET:FEE1:241:ENRCHSTBR'].value, ' type: ', type(self['GDET:FEE1:241:ENRCHSTBR'].value) )
+        self['GDET:FEE1:241:ENRCX'].write(self.calc_bmag()[0])
+        self['GDET:FEE1:241:ENRCY'].write(self.calc_bmag()[1])
+        self['GDET:FEE1:241:ENRC'].write(self.calc_bmag()[2])
         print("Initialization complete.")
 
     #obtain alpha and beta values at UNDSTART
@@ -49,22 +54,21 @@ class BMAGService(simulacrum.Service):
         lattice=[]
         line = self.cmd_socket.recv_pyobj()['result'][0].split()
         lattice = [ float(x) for x in line[-4:] ]
-        print('init lattice: ', lattice)
+        #print('init lattice: ', lattice)
         return lattice
 
     def get_data(self, stuff):
         #send query
         lattice=[]
         lattice = [ float(x) for x in stuff[-4:] ]
-        print('lattice from model: ', lattice)
+        #print('lattice from model: ', lattice)
         return lattice
     #build Bmag
     def calc_bmag(self):
         [x_alpha, x_beta, y_alpha, y_beta] = self.model
         x_bmag = (1/2)*((self.design[1]/x_beta)+(x_beta/self.design[1])+(x_alpha*np.sqrt(self.design[1]/x_beta)-self.design[0]*np.sqrt(x_beta/self.design[1]))**2)
         y_bmag = (1/2)*((self.design[3]/y_beta)+(y_beta/self.design[3])+(y_alpha*np.sqrt(self.design[3]/y_beta)-self.design[2]*np.sqrt(y_beta/self.design[3]))**2)
-        print(x_bmag, y_bmag)
-        return [x_bmag, y_bmag]
+        return [x_bmag, y_bmag, np.sqrt(x_bmag*y_bmag)]
     
     #listen for twiss objects from model
     def request_twiss(self):
@@ -83,12 +87,20 @@ class BMAGService(simulacrum.Service):
             if md.get("tag", None) == "und_twiss":
                 print("Twiss data incoming: ", md)
                 msg = await model_broadcast_socket.recv_pyobj(flags=flags) #does this look right if I am sending twiss list as a pyobj? 
-                print('received from model: ', msg)
                 self.model = self.get_data(msg)
-                print(self.model)
-                self.bmag = self.calc_bmag()
-                print(self.bmag)
-                await self['GDET:FEE1:241:ENRC'].write(self.bmag)
+                self.bmags = self.calc_bmag()
+                print('Bmags: ', self.bmags)
+                #fill single value PVs
+                await self['GDET:FEE1:241:ENRCX'].write(self.bmags[0])
+                await self['GDET:FEE1:241:ENRCY'].write(self.bmags[1])
+                await self['GDET:FEE1:241:ENRC'].write(self.bmags[2])
+                #circle history buffer and update first value 
+                #await self['GDET:FEE1:241:ENRCHSTBR'].write( np.roll(self['GDET:FEE1:241:ENRCHSTBR']) )            ROLL AND CHANGE FIRST VALUE
+                print(type(self.bmags[2])) 
+                print(type(self.bmags[2].tolist()))
+                print(type(self['GDET:FEE1:241:ENRCHSTBR'].value))
+                await self['GDET:FEE1:241:ENRCHSTBR'].write( self['GDET:FEE1:241:ENRCHSTBR'].value[:-1].append(self.bmags[2])  )     #STACK FIRST VALUE AND OLD ARRAY 
+                #await self['GDET:FEE1:241:ENRCHSTBR'][0].write(self.bmags[2])
             else: 
                 msg = await model_broadcast_socket.recv(flags=flags)
 
