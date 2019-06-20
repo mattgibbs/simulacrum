@@ -11,10 +11,13 @@ class KlystronPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES')  
     phas = pvproperty(value=0.0, name=':PHAS')
     enld = pvproperty(value=0.0, name=':ENLD')
+    # The seemingly random numbers in SWRD, HDSC, DSTA, and STAT
+    # are the values these PVs have when a klystron is working normally,
+    # with no faults.
     swrd = pvproperty(value=0, name=':SWRD')
-    hdsc = pvproperty(value=0, name=':HDSC')
-    dsta = pvproperty(value=0, name=':DSTA')
-    stat = pvproperty(value=0, name=':STAT')  #TODO figure out STAT, DSTA for all green as defaults
+    hdsc = pvproperty(value=32, name=':HDSC')
+    dsta = pvproperty(value=[1610612737, 528640], name=':DSTA')
+    stat = pvproperty(value=1, name=':STAT')
     bc1s =  pvproperty(value=0, name=':BEAMCODE1_STAT')
     trim = pvproperty(value=0, name=':TRIMPHAS', dtype=ChannelType.ENUM,
                       enum_strings=("Done", "TRIM"))
