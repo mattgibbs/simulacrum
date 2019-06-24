@@ -13,6 +13,8 @@ class MagnetPV(PVGroup):
     bcon = pvproperty(value=0.0, name=':BCON')
     bdes = pvproperty(value=0.0, name=':BDES')
     bact = pvproperty(value=0.0, name=':BACT', read_only=True)
+    bmin = pvproperty(value=0.0, name=':BMIN', read_only=True)
+    bmax = pvproperty(value=0.0, name=':BMAX', read_only=True)
     ctrl_strings = ("Ready", "TRIM", "PERTURB", "BCON_TO_BDES", "SAVE_BDES",
                     "LOAD_BDES", "UNDO_BDES", "DAC_ZERO", "CALB", "STDZ",
                     "RESET", "TURN_ON", "TURN_OFF")                
@@ -58,6 +60,8 @@ class MagnetPV(PVGroup):
             self.bdesegu._data['value'] = egu
             self.bactegu._data['value'] = egu
             self.bctrlegu._data['value'] = egu
+            self.bmin._data['units'] = egu
+            self.bmax._data['units'] = egu
         if 'upper_ctrl_limit' in initial_value:
             hopr = float(initial_value['upper_ctrl_limit'])
             self.bcon._data['upper_ctrl_limit'] = hopr
@@ -65,6 +69,7 @@ class MagnetPV(PVGroup):
             self.bact._data['upper_ctrl_limit'] = hopr
             self.bctrl._data['upper_ctrl_limit'] = hopr
             self.bctrl._data['upper_disp_limit'] = hopr
+            self.bmax._data['value'] = hopr
         if 'lower_ctrl_limit' in initial_value:
             lopr = float(initial_value['lower_ctrl_limit'])
             self.bcon._data['lower_ctrl_limit'] = lopr
@@ -72,6 +77,7 @@ class MagnetPV(PVGroup):
             self.bact._data['lower_ctrl_limit'] = lopr
             self.bctrl._data['lower_ctrl_limit'] = lopr
             self.bctrl._data['lower_disp_limit'] = lopr
+            self.bmin._data['value'] = lopr
         self.change_callback = change_callback
         
     @ctrl.putter
