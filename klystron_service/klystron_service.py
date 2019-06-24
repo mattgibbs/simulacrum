@@ -34,13 +34,12 @@ class KlystronPV(PVGroup):
         self.element_name = element_name
         self.orig_enld = initial_values[0]
         self.tripped = False
+        self.hv_ctrl_on = True
         self.enld._data['value'] = initial_values[0]
         self.pdes._data['value'] = initial_values[1]
         self.phas._data['value'] = initial_values[1]  
         self.bc1s._data['value'] = 1
         self.change_callback = change_callback 
-
-
 
     async def interlock_trip(self):
         if self.tripped:
@@ -80,7 +79,7 @@ class KlystronPV(PVGroup):
         return value
 
     async def mod_on(self):
-        if self.tripped:
+        if self.tripped or self.hv_ctrl_on:
             return
         dsta1, dsta2 = self.dsta.value
         dsta2 = dsta2 | (1 << 7) #Turn on the "Mod HV On" bit
@@ -88,9 +87,10 @@ class KlystronPV(PVGroup):
         self.dsta._data['value'] = [dsta1, dsta2]
         await self.dsta.publish(0)
         self.change_callback(self, True, "HV_ON")
+        self.hv_ctrl_on = True
     
     async def mod_off(self, hv_ready=True):
-        if self.tripped:
+        if self.tripped or (not self.hv_ctrl_on):
             return
         dsta1, dsta2 = self.dsta.value
         dsta2 = dsta2 & ~(1 << 7) #Zero the "Mod HV On" bit
@@ -99,6 +99,7 @@ class KlystronPV(PVGroup):
         self.dsta._data['value'] = [dsta1, dsta2]
         await self.dsta.publish(0)
         self.change_callback(self, False, "HV_ON")
+        self.hv_ctrl_on = False
 
     @swrd.putter
     async def swrd(self, instance, value):
