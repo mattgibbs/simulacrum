@@ -23,7 +23,10 @@ class MagnetPV(PVGroup):
     func = pvproperty(value=0, name=':FUNC', dtype=ChannelType.ENUM,
                       enum_strings=ctrl_strings)
     madname = pvproperty(name=":MADNAME", read_only=True, dtype=ChannelType.STRING)
-    statmsg = pvproperty(value="Ready", name=':STATMSG', read_only=True, dtype=ChannelType.STRING)
+    statmsg = pvproperty(value=0, name=':STATMSG', read_only=True, dtype=ChannelType.ENUM,
+        enum_strings=("Good", "BCON Warning", "Offline", "PAU Ctrl", "Turned Off", "Not Degaus'd",
+                      "Not Cal'd", "Feedback Ctrl", "Tripped", "DAC Error", "ADC Error", "Not Stdz'd",
+                      "Out-of-Tol", "BAD Ripple", "BAD BACT", "No Control"))
     abort = pvproperty(value=0, name=':ABORT', dtype=ChannelType.ENUM,
                       enum_strings=("Ready", "Abort"))
     select = pvproperty(value=0, name=':SELECT', dtype=ChannelType.ENUM, enum_strings=("NO", "YES"))
