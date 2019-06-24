@@ -11,25 +11,231 @@ class KlystronPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES')  
     phas = pvproperty(value=0.0, name=':PHAS')
     enld = pvproperty(value=0.0, name=':ENLD')
-    # The seemingly random numbers in SWRD, HDSC, DSTA, and STAT
-    # are the values these PVs have when a klystron is working normally,
-    # with no faults.
-    swrd = pvproperty(value=0, name=':SWRD')
-    hdsc = pvproperty(value=32, name=':HDSC')
-    dsta = pvproperty(value=[1610612737, 528640], name=':DSTA')
-    stat = pvproperty(value=1, name=':STAT')
+    # The seemingly random numbers in clear_* are the values these status
+    # PVs have when a klystron is working normally, with no faults.
+    clear_swrd = 0
+    clear_hdsc = 32
+    clear_dsta = [1610612737, 528640]
+    clear_stat = 1
+    swrd = pvproperty(value=clear_swrd, name=':SWRD')
+    hdsc = pvproperty(value=clear_hdsc, name=':HDSC')
+    dsta = pvproperty(value=clear_dsta, name=':DSTA')
+    stat = pvproperty(value=clear_stat, name=':STAT')
     bc1s =  pvproperty(value=0, name=':BEAMCODE1_STAT')
     trim = pvproperty(value=0, name=':TRIMPHAS', dtype=ChannelType.ENUM,
                       enum_strings=("Done", "TRIM"))
+    mod_reset = pvproperty(value=0, name=':MOD:RESET', dtype=ChannelType.ENUM,
+                      enum_strings=("Done", "RESET"))
+    mod_hv_ctrl = pvproperty(value=1, name=':MOD:HVON_SET', dtype=ChannelType.ENUM,
+                      enum_strings=("OFF", "ON"))
     def __init__(self, device_name, element_name, change_callback, initial_values, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device_name = device_name
         self.element_name = element_name
+        self.orig_enld = initial_values[0]
+        self.tripped = False
         self.enld._data['value'] = initial_values[0]
         self.pdes._data['value'] = initial_values[1]
         self.phas._data['value'] = initial_values[1]  
         self.bc1s._data['value'] = 1
         self.change_callback = change_callback 
+
+
+
+    async def interlock_trip(self):
+        if self.tripped:
+            return
+        self.tripped = True
+        dsta1, dsta2 = self.dsta.value
+        dsta2 = dsta2 & ~(1 << 3) #Turn off "Mod interlocks complete"
+        dsta2 = dsta2 & ~(1 << 7) #Turn off "Mod HV on"
+        self.dsta._data['value'] = [dsta1, dsta2]
+        await self.dsta.publish(0) 
+        self.change_callback(self, False, "HV_ON")
+    
+    @mod_reset.putter
+    async def mod_reset(self, instance, value):
+        ioc = instance.group
+        if value == "RESET":
+            dsta2 = self.clear_dsta[1]
+            dsta2 = dsta2 & ~(1 << 7) #Keep "Mod HV on" bit zeroed
+            dsta2 = dsta2 | (1 << 4) #Turn on the "Mod HV Ready" bit
+            self.dsta._data['value'] = [self.clear_dsta[0], dsta2]
+            self.swrd._data['value'] = self.clear_swrd
+            self.hdsc._data['value'] = self.clear_hdsc
+            # Note, mod reset doesn't change the STAT PV.
+            await asyncio.gather(
+                self.dsta.publish(0),
+                self.swrd.publish(0),
+                self.hdsc.publish(0))
+            self.tripped = False
+        return 0
+
+    @mod_hv_ctrl.putter
+    async def mod_hv_ctrl(self, instance, value):
+        if value == "ON":
+            await self.mod_on()
+        else:
+            await self.mod_off()
+        return value
+
+    async def mod_on(self):
+        if self.tripped:
+            return
+        dsta1, dsta2 = self.dsta.value
+        dsta2 = dsta2 | (1 << 7) #Turn on the "Mod HV On" bit
+        dsta2 = dsta2 & ~(1 << 4) #Turn off the "Mod HV Ready" bit
+        self.dsta._data['value'] = [dsta1, dsta2]
+        await self.dsta.publish(0)
+        self.change_callback(self, True, "HV_ON")
+    
+    async def mod_off(self, hv_ready=True):
+        if self.tripped:
+            return
+        dsta1, dsta2 = self.dsta.value
+        dsta2 = dsta2 & ~(1 << 7) #Zero the "Mod HV On" bit
+        if hv_ready:
+            dsta2 = dsta2 | (1 << 4) #Turn on the "Mod HV Ready" bit
+        self.dsta._data['value'] = [dsta1, dsta2]
+        await self.dsta.publish(0)
+        self.change_callback(self, False, "HV_ON")
+
+    @swrd.putter
+    async def swrd(self, instance, value):
+        ioc = instance.group
+        """
+        SWRD bit decoder:
+        bit | meaning          | klystron faulted if bit set?
+        -----------------------------------------------------
+        0   | Bad Cable Status | Faulted
+        1   | MKSU Protect     | Faulted
+        2   | No Triggers      | Faulted
+        3   | Modulator Fault  | Faulted
+        4   | Lost Acc Trigger | Faulted
+        5   | Low RF Power     | Faulted
+        6   | Amplitude Mean   | Not Faulted
+        7   | Amplitude Jitter | Not Faulted
+        8   | Lost Phase       | Faulted
+        9   | Phase Mean       | Not Faulted
+        10  | Phase Jitter     | Not Faulted
+        11  | No Sample Rate   | Not Faulted
+        12  | No Accel Rate    | Faulted 
+        """
+        fault_mask = 0b1000100111111
+        if (int(value) & fault_mask) > 0:
+            await self.interlock_trip()
+        return value
+            
+    @hdsc.putter
+    async def hdsc(self, instance, value):
+        ioc = instance.group
+        """
+        HDSC bit decoder:
+        bit | meaning               | klystron faulted if bit set?
+        ---------------------------------------------
+        0   | Phase Trim Disabled   | Not Faulted
+        1   | Maintenance Mode      | Faulted
+        2   | To Be Replaced        | Faulted
+        3   | Awaiting Run Up       | Faulted
+        4   | Additional Phase Ctrl | Not Faulted
+        5   | No Touch Up           | Not Faulted
+        6   | Check Phase           | Not Faulted
+        7   | 14:1 Winding Ratio    | Not Faulted
+        8   | Designated Spare      | Not Faulted
+        9   | Solid State Ph Shiftr | Not Faulted
+        10  | Controlled by EPICS   | Not Faulted
+        11  | Powers Transverse RF  | Not Faulted
+        12  | Power Savings Mode    | Faulted 
+        """
+        fault_mask = 0b1000000001110
+        if (int(value) & fault_mask) > 0:
+            await self.interlock_trip()
+        return value
+
+    @stat.putter
+    async def stat(self, instance, value):
+        ioc = instance.group
+        """
+        STAT bit decoder:
+        bit | meaning               | klystron HV off if bit set?
+        ---------------------------------------------
+        0   | Status OK             | Not Faulted
+        1   | Status Maintenance    | Faulted
+        2   | Status Unit Offline   | Faulted
+        3   | Status Out of Tol     | Not Faulted
+        4   | Status Bad CAMAC      | Not Faulted
+        5   | Status SWRD Error     | Not Faulted
+        6   | Dead Man Timeout      | Faulted
+        7   | Fox Phase Home Error  | Not Faulted
+        8   | Phase Mean Out of Tol | Not Faulted
+        9   | Status IPL Required   | Not Faulted
+        10  | Status Update Request | Not Faulted
+        """
+        off_mask = 0b00001000110
+        if (int(value) & off_mask) > 0:
+            await self.mod_off(hv_ready=False)
+        else:
+            if self.mod_hv_ctrl.value == "ON":
+                await self.mod_on()
+            else:
+                await self.mod_off(hv_ready=True)
+        return value
+
+    @dsta.putter
+    async def dsta(self, instance, value):
+        ioc = instance.group
+        """
+        DSTA1 bit decoder:
+        bit | meaning                        | klystron faulted if bit set?
+        ---------------------------------------------
+        0   | SLED Cavity Tuned              | Not Faulted
+        1   | SLED Cavity Detuned            | Not Faulted
+        2   | SLED Motor Not at Limit        | Faulted
+        3   | SLED Upper Needle Fault        | Faulted
+        4   | SLED Lower Needle Fault        | Faulted
+        5   | Electromagnet Current Tols     | Faulted
+        6   | Klystron Temperature           | Faulted
+        7   | Klystron Reflected Energy      | Faulted
+        8   | Klystron Over-Voltage          | Faulted
+        9   | Klystron Over-Current          | Faulted
+        10  | ADC Read Error                 | Not Faulted
+        11  | ADC Out of Tolerance           | Not Faulted
+        12  | Desired Phase Change           | Not Faulted
+        13  | Water Summary Fault            | Faulted
+        14  | Accelerator Water Flowswitch 1 | Faulted
+        15  | Accelerator Water Flowswitch 2 | Faulted
+        16  | Waveguide Water Flowswitch 1   | Faulted
+        17  | Waveguide Water Flowswitch 2   | Faulted
+        18  | Klystron Water Flowswitch      | Faulted
+        19  | 24V Battery Fault              | Faulted
+        20  | Waveguide Vacuum Fault         | Faulted
+        21  | Klystron Vacuum Fault          | Faulted
+        22  | Electromagnet Current Fault    | Faulted
+        23  | Electromagnet Breaker Fault    | Faulted
+        24  | MKSU Trigger Enable Fault      | Faulted
+        25  | MOD Available                  | Not Faulted
+        26  | No Text Defined                | Not Faulted
+        
+        DSTA2 bit decoder:
+        bit | meaning                        | klystron faulted if bit set?
+        ---------------------------------------------
+        0   | Modulator Control Power Fault  | Faulted
+        1   | Modulator VVS Voltage Fault    | Faulted
+        2   | Modulator Klys Heater Delay    | Faulted
+        3   | Modulator Interlocks Complete  | Not Faulted
+        4   | Modulator HV Ready             | Not Faulted
+        5   | Modulator Fault Lockout        | Faulted
+        6   | Modulator External Fault       | Faulted
+        7   | Modulator HV On                | Not Faulted
+        8   | Modulator Trigger Overcurrent  | Faulted
+        9   | Mod. End-of-line Clipper Fault | Faulted
+        10  | Mod. Electromag Over Current   | Faulted
+        """
+        dsta1_fault_mask = 0b001111111111110001111111100
+        dsta2_fault_mask = 0b11101100111
+        if ((int(value[0]) & dsta1_fault_mask) > 0) or ((int(value[1]) & dsta2_fault_mask) > 0):
+            await self.interlock_trip()
+        return value
 
     @trim.putter
     async def trim(self, instance, value):
@@ -91,7 +297,7 @@ class KlystronService(simulacrum.Service):
             klys_attr = "Phase_Deg"
         elif parameter == "ENLD": 
             klys_attr = "ENLD_MeV"
-        elif parameter == "BEAMCODE1_STAT":
+        elif parameter == "BEAMCODE1_STAT" or parameter == "HV_ON":
             klys_attr = "is_on"
             value =  'T' if value else 'F'
             element = element[2:]+'*'  #O_K30_8 overlay to K30_8*
