@@ -3944,6 +3944,30 @@ O_BC2: overlay = {O_BX21[THETA]:angle_deg*pi/180, O_BX22[THETA]:-angle_deg*pi/18
    D21OA[L]:7.8014689144809+Lp_drift*(1/cos(angle_deg*pi/180)-1/cos(bc2_theta_default)),
    D21OB[L]:7.8014689144809+Lp_drift*(1/cos(angle_deg*pi/180)-1/cos(bc2_theta_default))},
    var = {ANGLE_DEG, LP_DRIFT}, ANGLE_DEG = -1.9897364650652, LP_DRIFT = 9.8602
+
+O_K20_7: overlay = {L0A___1[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0A___2[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0A___3[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0A___4[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0A___5[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0A___6[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0A___7[GRADIENT]:f*ENLD_MeV*1e6/3.095224, L0A___1[PHI0]:phase_deg/360,
+   L0A___2[PHI0]:phase_deg/360, L0A___3[PHI0]:phase_deg/360, L0A___4[PHI0]:phase_deg/360,
+   L0A___5[PHI0]:phase_deg/360, L0A___6[PHI0]:phase_deg/360, L0A___7[PHI0]:phase_deg/360},
+   var = {ENLD_MEV, PHASE_DEG, F}, ENLD_MEV = 60.0,
+   F = 1
+
+O_K20_8: overlay = {L0B___1[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0B___2[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0B___3[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0B___4[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0B___5[GRADIENT]:f*ENLD_MeV*1e6/3.095224,
+   L0B___6[GRADIENT]:f*ENLD_MeV*1e6/3.095224, L0B___1[PHI0]:phase_deg/360,
+   L0B___2[PHI0]:phase_deg/360, L0B___3[PHI0]:phase_deg/360, L0B___4[PHI0]:phase_deg/360,
+   L0B___5[PHI0]:phase_deg/360, L0B___6[PHI0]:phase_deg/360},
+   var = {ENLD_MEV, PHASE_DEG, F}, ENLD_MEV = 71.0, PHASE_DEG = -2.5
+   F = 1
+
 O_K21_1: overlay = {K21_1B1[GRADIENT]:f*ENLD_MeV*1e6*0.4142135623730951/2.8692,
    K21_1B2[GRADIENT]:f*ENLD_MeV*1e6*0.4142135623730951/2.8692,
    K21_1C1[GRADIENT]:f*ENLD_MeV*1e6*0.2928932188134525/2.8692,
