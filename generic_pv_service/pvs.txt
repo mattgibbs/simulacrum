@@ -8,3 +8,9 @@
 # Here's a full example:
 # GDET:FEE1:241:ENRC float 3.3
 # Will create a PV called GDET:FEE1:241:ENRC, that holds a floating point number, initially 3.3
+
+SIOC:SYS0:ML00:CALC252 float 175.8759
+EVNT:SYS0:1:LCLSBEAMRATE float 120 
+BEND:DMP1:400:BDES float 13.94
+BLEN:LI24:886:BIMAX float 5042
+
