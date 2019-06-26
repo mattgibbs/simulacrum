@@ -6,6 +6,8 @@ element_names = []
 device_names = []
 path_to_lines = path.join(path.dirname(path.realpath(__file__)), "LCLS_lines.dat")
 
+logform = 'FROM %(module)s %(process)d AT %(asctime)s: \n  %(message)s'
+
 with open(path_to_lines, 'r') as f:
     for line in f:
         d = line.split()

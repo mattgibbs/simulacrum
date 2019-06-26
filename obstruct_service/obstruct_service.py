@@ -1,6 +1,7 @@
 #last edited by J.Shtalenkova on 2.19.2019
 
 import os
+import sys
 import asyncio
 import numpy as np
 from collections import OrderedDict
@@ -9,6 +10,14 @@ from caproto import ChannelType
 import simulacrum
 import zmq
 from zmq.asyncio import Context
+
+#set up python logger
+import logging 
+Log=logging.getLogger(__name__);Log.setLevel(logging.DEBUG) #create logger instance
+Handler = logging.StreamHandler(stream=sys.stdout);Handler.setLevel(logging.INFO) #create stdout handler
+Format = logging.Formatter(simulacrum.util.logform);Handler.setFormatter(Format); #format handler
+Log.addHandler(Handler) #add handler to logger
+
 
 #---------------------------------------STOPPERS--------------------------------------------#
 class StopperPV(PVGroup):
@@ -40,7 +49,7 @@ class StopperPV(PVGroup):
             await ioc.sts.write(1)
             self.change_callback(self, 1)
         else:
-            print("Warning, using a non-implemented stopper control function.")
+            Log.warning("Warning, using a non-implemented stopper control function.")
         return self.ctrl_strings.index(value)
 
 
@@ -181,7 +190,7 @@ class ObstructorService(simulacrum.Service):
 
     def recv_pytao():
         for line in self.cmd_socket.recv_pyobj()['result']:
-            print(line)
+            Log.info(line)
     #initialize service
     def __init__(self):
         super().__init__()
@@ -224,7 +233,7 @@ class ObstructorService(simulacrum.Service):
    
 # !!!   #create screen PVs    
     
-        print("Initialization complete.")
+        Log.info("Initialization complete.")
     
     #obtain status target status values from model 
     def get_obstruct_statuses_from_model(self):
@@ -298,35 +307,38 @@ class ObstructorService(simulacrum.Service):
     def on_obstructor_change(self, pv, value):
         #define obstructor object type
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set global lattice_calc_on=F"})
-        print(self.cmd_socket.recv_pyobj())
-        print('Obstructor changing...')
-        print('PV', pv)
-        print('PV device, PV element: ', pv.device_name, pv.element_name)
-        print(pv.element_name in self.stopper_names.keys())
+        msg = self.cmd_socket.recv_pyobj()['result']
+        Log.info(msg)
+        Log.info('Obstructor changing...')
+        msg = 'PV: {}'.format(pv)
+        Log.info(msg)
+        msg='PV device, PV element: {} {}'.format( pv.device_name, pv.element_name)
+        Log.debug(msg)
         if pv.element_name in self.stopper_names.keys():
-            print('I am a stopper...')
+            #print('I am a stopper...')
             self.on_stopper_change(pv, value)
-            print('My limits are ', self.lim )
+            #print('My limits are ', self.lim )
         elif pv.element_name in self.x_collimator_names.keys() or pv.element_name in self.y_collimator_names.keys() and type(value)==list:
-            print('I am a collimator...')
+            #print('I am a collimator...')
             self.on_collimator_change(pv, value)
-            print('My limits are ', self.lim )
+            #print('My limits are ', self.lim )
         else:
-            print('Warning, using a non-implemented control function....')
+            Log.warning('Warning, using a non-implemented control function....')
 
     #build and send tao command
         for i in range(len(self.limit_names)):
-            print()
             command = 'set ele {element} {attr}={val}'.format(element=pv.element_name, attr=self.limit_names[i], val=self.lim[i])
             self.cmd_socket.send_pyobj({"cmd": "tao", "val": command})
-            print(self.cmd_socket.recv_pyobj())
-
+            msg=self.cmd_socket.recv_pyobj()['result']
+            Log.info(msg)
         #restart global computation
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set global lattice_calc_on=T"})
         #update orbit?
-        print(self.cmd_socket.recv_pyobj())
+        msg = self.cmd_socket.recv_pyobj()['result']
+        Log.info(msg)
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
-        print(self.cmd_socket.recv_pyobj())
+        msg = self.cmd_socket.recv_pyobj()['result']
+        Log.info(msg)
     
 
 

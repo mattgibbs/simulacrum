@@ -6,6 +6,11 @@ from caproto import (ChannelString, ChannelEnum, ChannelDouble,
 from caproto.server import ioc_arg_parser, run
 import simulacrum
 
+#set up python logger
+ #import logging as Log 
+ #FORMAT=simulacrum.util.logform
+ #Log.basicConfig(level=Log.DEBUG, format=FORMAT)
+
 class ChannelBool(ChannelEnum):
     def __init__(self, *, enum_strings=None, **kwargs):
         if enum_strings is None:
