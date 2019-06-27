@@ -10,11 +10,10 @@ from zmq.asyncio import Context
 import simulacrum 
 
 #set up python logger
-import logging 
-Log=logging.getLogger(__name__);Log.setLevel(logging.DEBUG) #create logger instance
-Handler = logging.StreamHandler(stream=sys.stdout);Handler.setLevel(logging.INFO) #create stdout handler
-Format = logging.Formatter(simulacrum.util.logform);Handler.setFormatter(Format); #format handler
-Log.addHandler(Handler) #add handler to log
+import logging  
+L = simulacrum.util.LogInit(__name__, level=logging.DEBUG)
+L.configLog()
+
 
 class ModelService:
     def __init__(self):
@@ -28,7 +27,7 @@ class ModelService:
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
 
     def start(self):
-        Log.info("Starting Model Service.")
+        L.Log.info("Starting Model Service.")
         loop = asyncio.get_event_loop()
         task = loop.create_task(self.recv())
         try:
@@ -86,7 +85,7 @@ class ModelService:
         twiss_text = self.tao.cmd("show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b UNDSTART")
         #format to list of comma separated values
         msg='twiss from get_twiss: {}'.format(twiss_text)
-        Log.info(msg)
+        L.Log.info(msg)
         twiss = twiss_text[0].split()
         return twiss
 
@@ -116,7 +115,7 @@ class ModelService:
         self.model_broadcast_socket.send(orb)
 
     def send_profiles_twiss(self):
-        Log.info('Sending Profile');
+        L.Log.info('Sending Profile');
         twiss_text = np.asarray(self.tao.cmd("show lat -at beta_a -at beta_b Instrument::OTR*,Instrument::YAG*"))
         metadata = {"tag" : "prof_twiss", "dtype": str(twiss_text.dtype), "shape": twiss_text.shape}
         self.model_broadcast_socket.send_pyobj(metadata, zmq.SNDMORE)
@@ -134,7 +133,7 @@ class ModelService:
         while True:
             p = await s.recv_pyobj()
             msg = "Got a message: {}".format(p)
-            Log.info(msg)
+            L.Log.info(msg)
             if p['cmd'] == 'corr':
                 try:
                     self.set_corrector_strength(name=p['name'], new_strength=p['val'], axis=p.get('axis'))

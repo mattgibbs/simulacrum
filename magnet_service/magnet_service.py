@@ -11,12 +11,9 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-import logging 
-Log=logging.getLogger(__name__);Log.setLevel(logging.DEBUG) #create logger instance
-Handler = logging.StreamHandler(stream=sys.stdout);Handler.setLevel(logging.INFO) #create stdout handler
-Format = logging.Formatter(simulacrum.util.logform);Handler.setFormatter(Format); #format handler
-Log.addHandler(Handler) #add handler to logger 
-
+import logging  
+L = simulacrum.util.LogInit(__name__, level=logging.INFO)
+L.configLog()
 
 class MagnetPV(PVGroup):
     bcon = pvproperty(value=0.0, name=':BCON')
@@ -104,7 +101,7 @@ class MagnetPV(PVGroup):
             if self.bdes_for_undo:
                 await ioc.bdes.write(self.bdes_for_undo)
         else:
-           Log.warning("Warning, using a non-implemented magnet control function.")
+           L.Log.warning("Warning, using a non-implemented magnet control function.")
         return 0
     
     @pvproperty(value=0.0, name=":BCTRL", mock_record='ao')
@@ -190,7 +187,7 @@ class MagnetService(simulacrum.Service):
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::* field_master = T"})
         self.cmd_socket.recv_pyobj()
         
-        Log.info("Initialization complete.")
+        L.Log.info("Initialization complete.")
     
     def get_initial_values(self):
         init_vals = self.get_magnet_BACTs_from_model()
@@ -217,13 +214,13 @@ class MagnetService(simulacrum.Service):
         mag_attr = self.attr_for_mag_type[mag_type]
         conv = self.conversion_to_BMAD_for_mag_type[mag_type]
         l = magnet_pv.length
-        Log.info('Updating {}... '.format( magnet_pv.device_name ) )
+        L.Log.info('Updating {}... '.format( magnet_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} {attr} = {val}".format(element=magnet_pv.element_name, 
                                                                                                    attr=mag_attr,
                                                                                                    val=conv(value, l))})
         
         self.cmd_socket.recv_pyobj()
-        Log.info('Updated {}.'.format( magnet_pv.device_name ) )
+        L.Log.info('Updated {}.'.format( magnet_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         self.cmd_socket.recv_pyobj()
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
