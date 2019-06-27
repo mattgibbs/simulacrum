@@ -24,15 +24,23 @@ def convert_device_to_element(device_name):
     return dev2ele[device_name]
 
 
-#Create  Log object using python's getLogger rather than trying to inherit the logger class
-class LogInit():
+lvls={'CRITICAL' : logging.CRITICAL,
+        'ERROR' : logging.ERROR, 
+        'WARNING' : logging.WARNING, 
+        'INFO' : logging.INFO, 
+        'DEBUG' : logging.DEBUG,
+        'NOTSET' : logging.NOTSET}
+
+class SimulacrumLog():
     def __init__(self, name, level=logging.DEBUG, stream=sys.stdout, msg=logform):
         self.name=name
-        self.level=level
+        self.level=lvls[level.upper()]
         self.stream=stream
         self.msg=msg
 
         self.Log=logging.getLogger(name)
+        self.configLog()
+
 
     #Logger is reconfigurable by user    
     #Log always set to DEBUG level, level to stdout is specified by user as level paramter in LogInit initialization

@@ -11,9 +11,7 @@ import pickle
 import matplotlib.pyplot as pl
 
 #set up python logger
-import logging  
-L = simulacrum.util.LogInit(__name__, level=logging.INFO)
-L.configLog()
+L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
 
 class ProfMonService(simulacrum.Service):
     default_image_dim = 1024

@@ -10,10 +10,7 @@ from zmq.asyncio import Context
 import simulacrum 
 
 #set up python logger
-import logging  
-L = simulacrum.util.LogInit(__name__, level=logging.DEBUG)
-L.configLog()
-
+L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
 
 class ModelService:
     def __init__(self):

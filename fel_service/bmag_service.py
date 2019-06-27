@@ -11,9 +11,7 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-import logging  
-L = simulacrum.util.LogInit(__name__, level=logging.INFO)
-L.configLog()
+L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
 
 class BMAGPV(PVGroup):
     Xbmag = pvproperty(value= 0.0, name=':ENRCX', read_only=True)
