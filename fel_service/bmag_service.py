@@ -11,12 +11,9 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-import logging 
-Log=logging.getLogger(__name__);Log.setLevel(logging.DEBUG) #create logger instance
-Handler = logging.StreamHandler(stream=sys.stdout);Handler.setLevel(logging.INFO) #create stdout handler
-Format = logging.Formatter(simulacrum.util.logform);Handler.setFormatter(Format); #format handler
-Log.addHandler(Handler) #add handler to logger
-
+import logging  
+L = simulacrum.util.LogInit(__name__, level=logging.INFO)
+L.configLog()
 
 class BMAGPV(PVGroup):
     Xbmag = pvproperty(value= 0.0, name=':ENRCX', read_only=True)
@@ -49,12 +46,12 @@ class BMAGService(simulacrum.Service):
         self.model = self.get_init_data()
         #initialize bmag values
         msg = 'Buffer {}'.format(self['GDET:FEE1:241:ENRCHSTBR'].value)
-        Log.debug(msg)
+        L.Log.debug(msg)
         self.bmags = self.calc_bmag()
         self['GDET:FEE1:241:ENRCX']._data['value'] = self.bmags[0]
         self['GDET:FEE1:241:ENRCY']._data['value'] = self.bmags[1]
         self['GDET:FEE1:241:ENRC']._data['value'] = self.bmags[2]
-        Log.info("Initialization complete.")
+        L.Log.info("Initialization complete.")
 
     #obtain alpha and beta values at UNDSTART
     def get_init_data(self):
@@ -87,18 +84,18 @@ class BMAGService(simulacrum.Service):
         model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
-            Log.info("Checking for new twiss data.")
+            L.Log.info("Checking for new twiss data.")
             md = await model_broadcast_socket.recv_pyobj(flags=flags)
             msg="Some data incoming: {}".format( md)
-            Log.info(msg)
+            L.Log.info(msg)
             if md.get("tag", None) == "und_twiss":
                 msg="Twiss data incoming: {}".format( md)
-                Log.info(msg)
+                L.Log.info(msg)
                 msg = await model_broadcast_socket.recv_pyobj(flags=flags) #does this look right if I am sending twiss list as a pyobj? 
                 self.model = self.get_data(msg)
                 self.bmags = self.calc_bmag()
                 msg='Bmags: {}'.format( self.bmags)
-                Log.debug(msg)
+                L.Log.debug(msg)
                 #fill single value PVs
                 await self['GDET:FEE1:241:ENRCX'].write(self.bmags[0])
                 await self['GDET:FEE1:241:ENRCY'].write(self.bmags[1])
@@ -106,7 +103,7 @@ class BMAGService(simulacrum.Service):
                 #circle history buffer and update first value
                 
                 msg = 'Buffer: {}'.format( self['GDET:FEE1:241:ENRCHSTBR'].value )
-                Log.debug(msg)
+                L.Log.debug(msg)
             else: 
                 msg = await model_broadcast_socket.recv(flags=flags)
 
@@ -123,9 +120,9 @@ class BMAGService(simulacrum.Service):
     
     async def print_buffer(self):
         while True:
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(20.0)
             msg='Buffer: {}'.format( self['GDET:FEE1:241:ENRCHSTBR'].value[2780:])
-            Log.info(msg)
+            L.Log.info(msg)
 
 def main():
     service = BMAGService()

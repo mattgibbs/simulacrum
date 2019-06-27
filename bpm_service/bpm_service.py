@@ -8,11 +8,9 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-import logging 
-Log=logging.getLogger(__name__);Log.setLevel(logging.DEBUG) #create logger instance
-Handler = logging.StreamHandler(stream=sys.stdout);Handler.setLevel(logging.INFO) #create stdout handler
-Format = logging.Formatter(simulacrum.util.logform);Handler.setFormatter(Format); #format handler
-Log.addHandler(Handler) #add handler to logger
+import logging  
+L = simulacrum.util.LogInit(__name__, level=logging.INFO)
+L.configLog()
 
 class BPMPV(PVGroup):
     x = pvproperty(value=0.0, name=':X', read_only=True, mock_record='ai',
@@ -33,14 +31,14 @@ class BPMService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         self.orbit = self.initialize_orbit()
-        Log.info("Initialization complete.")
+        L.Log.info("Initialization complete.")
     
     def initialize_orbit(self):
         # First, get the list of BPMs and their Z locations from the model service
         # This is maybe brittle because we use Tao's "show" command, then parse
         # the results, which the Tao authors advise against because the format of the 
         # results might change.  Oh well, I can't figure out a better way to do it.
-        Log.info("Initializing with data from model service.")
+        L.Log.info("Initializing with data from model service.")
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele Instrument::BPM*,Instrument::RFB*"})
         bpms = self.cmd_socket.recv_pyobj()['result'][:-1]
         orbit = np.zeros(len(bpms), dtype=[('element_name', 'U60'), ('device_name', 'U60'), ('x', 'float32'), ('y', 'float32'), ('tmit', 'float32'), ('z', 'float32')])
@@ -56,7 +54,7 @@ class BPMService(simulacrum.Service):
         return orbit
     
     async def publish_z(self):
-        Log.info("Publishing Z PVs")
+        L.Log.info("Publishing Z PVs")
         for row in self.orbit:
             zpv = row['device_name']+":Z"
             if zpv in self:
@@ -72,10 +70,10 @@ class BPMService(simulacrum.Service):
         model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
-            Log.info("Checking for new orbit data.")
+            L.Log.info("Checking for new orbit data.")
             md = await model_broadcast_socket.recv_pyobj(flags=flags)
             msg="Orbit data incoming: {}".format(md)
-            #Log.info(msg)
+            #L.Log.info(msg)
             if md.get("tag", None) == "orbit":
                 msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
                 buf = memoryview(msg)
@@ -83,7 +81,7 @@ class BPMService(simulacrum.Service):
                 A = A.reshape(md['shape'])
                 self.orbit['x'] = A[0]
                 self.orbit['y'] = A[1]
-                Log.info(self.orbit)
+                L.Log.info(self.orbit)
                 await self.publish_orbit()
             else: 
                 await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)

@@ -7,9 +7,9 @@ from caproto.server import ioc_arg_parser, run
 import simulacrum
 
 #set up python logger
- #import logging as Log 
- #FORMAT=simulacrum.util.logform
- #Log.basicConfig(level=Log.DEBUG, format=FORMAT)
+import logging  
+L = simulacrum.util.LogInit(__name__, level=logging.INFO)
+L.configLog()
 
 class ChannelBool(ChannelEnum):
     def __init__(self, *, enum_strings=None, **kwargs):

@@ -11,13 +11,9 @@ import pickle
 import matplotlib.pyplot as pl
 
 #set up python logger
-import logging 
-Log=logging.getLogger(__name__);Log.setLevel(logging.DEBUG) #create logger instance
-Handler = logging.StreamHandler(stream=sys.stdout);Handler.setLevel(logging.INFO) #create stdout handler
-Format = logging.Formatter(simulacrum.util.logform);Handler.setFormatter(Format); #format handler
-Log.addHandler(Handler) #add handler to log
-
-
+import logging  
+L = simulacrum.util.LogInit(__name__, level=logging.INFO)
+L.configLog()
 
 class ProfMonService(simulacrum.Service):
     default_image_dim = 1024
@@ -33,7 +29,7 @@ class ProfMonService(simulacrum.Service):
                 'CTHD:IN20:206:FRAME_RATE', 'SIOC:SYS0:ML02:AO000'] #last one not strictly necessary but speeds up matlab init
 
     def __init__(self):
-        Log.info('Initializing PVs')
+        L.Log.info('Initializing PVs')
         super().__init__()
 
         #load Profmon properties from file
@@ -74,7 +70,7 @@ class ProfMonService(simulacrum.Service):
                         }
             except IndexError:
                 msg = '{} has an invalid device name'.format(screen)
-                Log.info(msg)
+                L.Log.info(msg)
                 return None
             pvProps.update({'acquire': acquire, 'frame_rate': frame_rate, 'buf_idx': buf_idx, 'img_save': img_save, 'image': image})
             return type(screenProps['device_name'], (PVGroup,), pvProps)
@@ -105,7 +101,7 @@ class ProfMonService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         
-        Log.info("Initialization complete.")
+        L.Log.info("Initialization complete.")
 
     def request_profiles(self):
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
@@ -117,10 +113,10 @@ class ProfMonService(simulacrum.Service):
         model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
-            Log.info("Checking for new profile data.")
+            L.Log.info("Checking for new profile data.")
             md = await model_broadcast_socket.recv_pyobj(flags=flags)
             msg ="Profile data incoming: {}".format( md)
-            Log.info(msg)
+            L.Log.info(msg)
             if md.get("tag", None) == "prof_twiss":
                 msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
                 buf = memoryview(msg)
@@ -130,10 +126,10 @@ class ProfMonService(simulacrum.Service):
                 await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
                 
 
-            Log.info("Checking for new profile orbits.")
+            L.Log.info("Checking for new profile orbits.")
             md = await model_broadcast_socket.recv_pyobj(flags=flags)
             msg="Profile orbit incoming: {}".format( md)
-            Log.info(msg)
+            L.Log.info(msg)
             if md.get("tag", None) == "prof_orbit":
                 msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
                 buf = memoryview(msg)

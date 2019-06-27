@@ -9,11 +9,9 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-import logging 
-Log=logging.getLogger(__name__);Log.setLevel(logging.DEBUG) #create logger instance
-Handler = logging.StreamHandler(stream=sys.stdout);Handler.setLevel(logging.INFO) #create stdout handler
-Format = logging.Formatter(simulacrum.util.logform);Handler.setFormatter(Format); #format handler
-Log.addHandler(Handler) #add handler to logger
+import logging  
+L = simulacrum.util.LogInit(__name__, level=logging.DEBUG)
+L.configLog()
 
 class KlystronPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES')  
@@ -44,7 +42,7 @@ class KlystronPV(PVGroup):
             await ioc.phas.write(ioc.pdes.value)
             self.change_callback(self, ioc.phas.value, "PHAS")
         else:
-            Log.warning:("Warning, only valid function is TRIM.")
+            L.Log.warning:("Warning, only valid function is TRIM.")
         return 0
 
     @enld.putter
@@ -77,10 +75,10 @@ class KlystronService(simulacrum.Service):
         init_vals = self.get_klystron_ACTs_from_model()
         klys_pvs = {device_name: KlystronPV(device_name, convert_device_to_element(device_name), self.on_klystron_change, initial_values=init_vals[device_name], prefix=device_name) 
                     for device_name in init_vals.keys()} 
-        Log.info(init_vals)
+        L.Log.info(init_vals)
         self.add_pvs(klys_pvs)
                                                             
-        Log.info("Initialization complete.")
+        L.Log.info("Initialization complete.")
 
     def get_klystron_ACTs_from_model(self):
         init_vals = {}
@@ -101,10 +99,10 @@ class KlystronService(simulacrum.Service):
             value =  'T' if value else 'F'
             element = element[2:]+'*'  #O_K30_8 overlay to K30_8*
         cmd = f'set ele {element} {klys_attr} = {value}'
-        Log.info(cmd)
+        L.Log.info(cmd)
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": cmd})
         msg = self.cmd_socket.recv_pyobj()['result']
-        Log.info(msg)
+        L.Log.info(msg)
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         self.cmd_socket.recv_pyobj()
    
