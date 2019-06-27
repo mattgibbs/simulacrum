@@ -8,9 +8,7 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-import logging  
-L = simulacrum.util.LogInit(__name__, level=logging.INFO)
-L.configLog()
+L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
 
 class BPMPV(PVGroup):
     x = pvproperty(value=0.0, name=':X', read_only=True, mock_record='ai',

@@ -9,9 +9,7 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-import logging  
-L = simulacrum.util.LogInit(__name__, level=logging.DEBUG)
-L.configLog()
+L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
 
 class KlystronPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES')  
