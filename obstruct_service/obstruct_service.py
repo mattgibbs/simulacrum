@@ -12,7 +12,7 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
+L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 #---------------------------------------STOPPERS--------------------------------------------#
 class StopperPV(PVGroup):
@@ -44,7 +44,7 @@ class StopperPV(PVGroup):
             await ioc.sts.write(1)
             self.change_callback(self, 1)
         else:
-            L.Log.warning("Warning, using a non-implemented stopper control function.")
+            L.warning("Warning, using a non-implemented stopper control function.")
         return self.ctrl_strings.index(value)
 
 
@@ -185,7 +185,7 @@ class ObstructorService(simulacrum.Service):
 
     def recv_pytao():
         for line in self.cmd_socket.recv_pyobj()['result']:
-            L.Log.info(line)
+            L.info(line)
     #initialize service
     def __init__(self):
         super().__init__()
@@ -228,7 +228,7 @@ class ObstructorService(simulacrum.Service):
    
 # !!!   #create screen PVs    
     
-        L.Log.info("Initialization complete.")
+        L.info("Initialization complete.")
     
     #obtain status target status values from model 
     def get_obstruct_statuses_from_model(self):
@@ -303,12 +303,12 @@ class ObstructorService(simulacrum.Service):
         #define obstructor object type
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set global lattice_calc_on=F"})
         msg = self.cmd_socket.recv_pyobj()['result']
-        L.Log.info(msg)
-        L.Log.info('Obstructor changing...')
+        L.info(msg)
+        L.info('Obstructor changing...')
         msg = 'PV: {}'.format(pv)
-        L.Log.info(msg)
+        L.info(msg)
         msg='PV device, PV element: {} {}'.format( pv.device_name, pv.element_name)
-        L.Log.debug(msg)
+        L.debug(msg)
         if pv.element_name in self.stopper_names.keys():
             #print('I am a stopper...')
             self.on_stopper_change(pv, value)
@@ -318,22 +318,22 @@ class ObstructorService(simulacrum.Service):
             self.on_collimator_change(pv, value)
             #print('My limits are ', self.lim )
         else:
-            L.Log.warning('Warning, using a non-implemented control function....')
+            L.warning('Warning, using a non-implemented control function....')
 
     #build and send tao command
         for i in range(len(self.limit_names)):
             command = 'set ele {element} {attr}={val}'.format(element=pv.element_name, attr=self.limit_names[i], val=self.lim[i])
             self.cmd_socket.send_pyobj({"cmd": "tao", "val": command})
             msg=self.cmd_socket.recv_pyobj()['result']
-            L.Log.info(msg)
+            L.info(msg)
         #restart global computation
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set global lattice_calc_on=T"})
         #update orbit?
         msg = self.cmd_socket.recv_pyobj()['result']
-        L.Log.info(msg)
+        L.info(msg)
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         msg = self.cmd_socket.recv_pyobj()['result']
-        L.Log.info(msg)
+        L.info(msg)
     
 
 

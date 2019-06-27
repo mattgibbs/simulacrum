@@ -9,7 +9,7 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
+L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class KlystronPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES')  
@@ -40,7 +40,7 @@ class KlystronPV(PVGroup):
             await ioc.phas.write(ioc.pdes.value)
             self.change_callback(self, ioc.phas.value, "PHAS")
         else:
-            L.Log.warning:("Warning, only valid function is TRIM.")
+            L.warning:("Warning, only valid function is TRIM.")
         return 0
 
     @enld.putter
@@ -73,10 +73,10 @@ class KlystronService(simulacrum.Service):
         init_vals = self.get_klystron_ACTs_from_model()
         klys_pvs = {device_name: KlystronPV(device_name, convert_device_to_element(device_name), self.on_klystron_change, initial_values=init_vals[device_name], prefix=device_name) 
                     for device_name in init_vals.keys()} 
-        L.Log.info(init_vals)
+        L.info(init_vals)
         self.add_pvs(klys_pvs)
                                                             
-        L.Log.info("Initialization complete.")
+        L.info("Initialization complete.")
 
     def get_klystron_ACTs_from_model(self):
         init_vals = {}
@@ -97,10 +97,10 @@ class KlystronService(simulacrum.Service):
             value =  'T' if value else 'F'
             element = element[2:]+'*'  #O_K30_8 overlay to K30_8*
         cmd = f'set ele {element} {klys_attr} = {value}'
-        L.Log.info(cmd)
+        L.info(cmd)
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": cmd})
         msg = self.cmd_socket.recv_pyobj()['result']
-        L.Log.info(msg)
+        L.info(msg)
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         self.cmd_socket.recv_pyobj()
    
