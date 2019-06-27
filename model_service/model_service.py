@@ -10,7 +10,7 @@ from zmq.asyncio import Context
 import simulacrum 
 
 #set up python logger
-L = simulacrum.util.SimulacrumLog(__name__, level='INFO')
+L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class ModelService:
     def __init__(self):
@@ -24,7 +24,7 @@ class ModelService:
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
 
     def start(self):
-        L.Log.info("Starting Model Service.")
+        L.info("Starting Model Service.")
         loop = asyncio.get_event_loop()
         task = loop.create_task(self.recv())
         try:
@@ -82,7 +82,7 @@ class ModelService:
         twiss_text = self.tao.cmd("show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b UNDSTART")
         #format to list of comma separated values
         msg='twiss from get_twiss: {}'.format(twiss_text)
-        L.Log.info(msg)
+        L.info(msg)
         twiss = twiss_text[0].split()
         return twiss
 
@@ -112,7 +112,7 @@ class ModelService:
         self.model_broadcast_socket.send(orb)
 
     def send_profiles_twiss(self):
-        L.Log.info('Sending Profile');
+        L.info('Sending Profile');
         twiss_text = np.asarray(self.tao.cmd("show lat -at beta_a -at beta_b Instrument::OTR*,Instrument::YAG*"))
         metadata = {"tag" : "prof_twiss", "dtype": str(twiss_text.dtype), "shape": twiss_text.shape}
         self.model_broadcast_socket.send_pyobj(metadata, zmq.SNDMORE)
@@ -130,7 +130,7 @@ class ModelService:
         while True:
             p = await s.recv_pyobj()
             msg = "Got a message: {}".format(p)
-            L.Log.info(msg)
+            L.info(msg)
             if p['cmd'] == 'corr':
                 try:
                     self.set_corrector_strength(name=p['name'], new_strength=p['val'], axis=p.get('axis'))
