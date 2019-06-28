@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 import json
 from collections import OrderedDict
@@ -8,6 +9,9 @@ from caproto import ChannelType
 import simulacrum
 import zmq
 from zmq.asyncio import Context
+
+#set up python logger
+L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class MagnetPV(PVGroup):
     bcon = pvproperty(value=0.0, name=':BCON')
@@ -104,7 +108,7 @@ class MagnetPV(PVGroup):
             if self.bdes_for_undo:
                 await ioc.bdes.write(self.bdes_for_undo)
         else:
-            print("Warning, using a non-implemented magnet control function.")
+           L.warning("Warning, using a non-implemented magnet control function.")
         return 0
     
     @pvproperty(value=0.0, name=":BCTRL", mock_record='ao')
@@ -190,7 +194,7 @@ class MagnetService(simulacrum.Service):
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::* field_master = T"})
         self.cmd_socket.recv_pyobj()
         
-        print("Initialization complete.")
+        L.info("Initialization complete.")
     
     def get_initial_values(self):
         init_vals = self.get_magnet_BACTs_from_model()
@@ -217,10 +221,13 @@ class MagnetService(simulacrum.Service):
         mag_attr = self.attr_for_mag_type[mag_type]
         conv = self.conversion_to_BMAD_for_mag_type[mag_type]
         l = magnet_pv.length
+        L.info('Updating {}... '.format( magnet_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} {attr} = {val}".format(element=magnet_pv.element_name, 
                                                                                                    attr=mag_attr,
                                                                                                    val=conv(value, l))})
-        print(self.cmd_socket.recv_pyobj())
+        
+        self.cmd_socket.recv_pyobj()
+        L.info('Updated {}.'.format( magnet_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         self.cmd_socket.recv_pyobj()
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
