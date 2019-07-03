@@ -23,12 +23,14 @@ class BPMPV(PVGroup):
 class BPMService(simulacrum.Service):
     def __init__(self):
         super().__init__()
-        bpm_pvs = {device_name: BPMPV(prefix=device_name) for device_name in simulacrum.util.device_names if device_name.startswith("BPM")}
-        self.add_pvs(bpm_pvs)
         self.ctx = Context.instance()
         #cmd socket is a synchronous socket, we don't want the asyncio context.
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
+        bpms = self.fetch_bpm_list()
+        device_names = [simulacrum.util.convert_element_to_device(bpm[0]) for bpm in bpms]
+        bpm_pvs = {device_name: BPMPV(prefix=device_name) for device_name in device_names}
+        self.add_pvs(bpm_pvs)
         self.orbit = self.initialize_orbit()
         L.info("Initialization complete.")
     
@@ -38,11 +40,10 @@ class BPMService(simulacrum.Service):
         # the results, which the Tao authors advise against because the format of the 
         # results might change.  Oh well, I can't figure out a better way to do it.
         L.info("Initializing with data from model service.")
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele Instrument::BPM*,Instrument::RFB*"})
-        bpms = self.cmd_socket.recv_pyobj()['result'][:-1]
+        bpms = self.fetch_bpm_list()
         orbit = np.zeros(len(bpms), dtype=[('element_name', 'U60'), ('device_name', 'U60'), ('x', 'float32'), ('y', 'float32'), ('tmit', 'float32'), ('z', 'float32')])
         for i, row in enumerate(bpms):
-            (_, name, z) = row.split()
+            (name, z) = row
             orbit['element_name'][i] = name
             try:
                 orbit['device_name'][i] = simulacrum.util.convert_element_to_device(name)
@@ -51,6 +52,11 @@ class BPMService(simulacrum.Service):
             orbit['z'][i] = float(z)
         orbit = np.sort(orbit,order='z')
         return orbit
+    
+    def fetch_bpm_list(self):
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele Instrument::BPM*,Instrument::RFB*"})
+        bpms = [row.split(None, 3)[1:3] for row in self.cmd_socket.recv_pyobj()['result'][:-1]]
+        return bpms
     
     async def publish_z(self):
         L.info("Publishing Z PVs")
@@ -69,18 +75,19 @@ class BPMService(simulacrum.Service):
         model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
-            L.info("Checking for new orbit data.")
+            L.debug("Checking for new orbit data.")
             md = await model_broadcast_socket.recv_pyobj(flags=flags)
             msg="Orbit data incoming: {}".format(md)
-            #L.info(msg)
+            L.debug(msg)
             if md.get("tag", None) == "orbit":
                 msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+                L.debug(msg)
                 buf = memoryview(msg)
                 A = np.frombuffer(buf, dtype=md['dtype'])
                 A = A.reshape(md['shape'])
                 self.orbit['x'] = A[0]
                 self.orbit['y'] = A[1]
-                L.info(self.orbit)
+                L.debug(self.orbit)
                 await self.publish_orbit()
             else: 
                 await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
