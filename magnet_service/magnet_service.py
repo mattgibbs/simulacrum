@@ -185,16 +185,25 @@ class MagnetService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         init_vals = self.get_initial_values()
+        magnet_element_list = self.get_magnet_list_from_model()
+        magnet_device_list = [simulacrum.util.convert_element_to_device(element) for element in magnet_element_list]
         mag_pvs = {device_name: MagnetPV(device_name, simulacrum.util.convert_device_to_element(device_name), self.on_magnet_change, length=init_vals[device_name]['length'], initial_value=init_vals[device_name], prefix=device_name) 
-                    for device_name in simulacrum.util.device_names 
-                    if device_name.startswith("XCOR") or device_name.startswith("YCOR") or device_name.startswith("QUAD") or device_name.startswith("BEND")}
+                    for device_name in magnet_device_list
+                    if device_name in init_vals}
         self.add_pvs(mag_pvs)
         # Now that we've set up all the magnets, we need to send the model a
         # command to use non-normalized magnetic field units.
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::* field_master = T"})
         self.cmd_socket.recv_pyobj()
-        
         L.info("Initialization complete.")
+    
+    def get_magnet_list_from_model(self):
+        element_list = []
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele Kicker::*,Quadrupole::*,Sbend::*"})
+        for row in self.cmd_socket.recv_pyobj()['result']:
+            print(row)
+            element_list.append(row.split(None, 3)[1])
+        return element_list
     
     def get_initial_values(self):
         init_vals = self.get_magnet_BACTs_from_model()
@@ -202,10 +211,13 @@ class MagnetService(simulacrum.Service):
         with open(path_to_limits_file) as f:
             limits = json.load(f)
             for device_name in init_vals:
-                init_vals[device_name]["units"] = limits[device_name]["EGU"]
-                init_vals[device_name]["precision"] = limits[device_name]["PREC"]
-                init_vals[device_name]["upper_ctrl_limit"] = limits[device_name]["HOPR"]
-                init_vals[device_name]["lower_ctrl_limit"] = limits[device_name]["LOPR"]
+                try:
+                    init_vals[device_name]["units"] = limits[device_name]["EGU"]
+                    init_vals[device_name]["precision"] = limits[device_name]["PREC"]
+                    init_vals[device_name]["upper_ctrl_limit"] = limits[device_name]["HOPR"]
+                    init_vals[device_name]["lower_ctrl_limit"] = limits[device_name]["LOPR"]
+                except KeyError:
+                    pass
         return init_vals
     
     def get_magnet_BACTs_from_model(self):
@@ -221,13 +233,13 @@ class MagnetService(simulacrum.Service):
         mag_attr = self.attr_for_mag_type[mag_type]
         conv = self.conversion_to_BMAD_for_mag_type[mag_type]
         l = magnet_pv.length
-        L.info('Updating {}... '.format( magnet_pv.device_name ) )
+        L.debug('Updating {}... '.format( magnet_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} {attr} = {val}".format(element=magnet_pv.element_name, 
                                                                                                    attr=mag_attr,
                                                                                                    val=conv(value, l))})
         
         self.cmd_socket.recv_pyobj()
-        L.info('Updated {}.'.format( magnet_pv.device_name ) )
+        L.debug('Updated {}.'.format( magnet_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         self.cmd_socket.recv_pyobj()
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
