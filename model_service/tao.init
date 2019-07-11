@@ -1,3 +1,10 @@
+!--------------------------------------------------------
+&tao_design_lattice
+  !unique_name_suffix="*::_##?"
+  design_lattice(1)%file= 'lcls.lat'
+!  combine_consecutive_elements_of_like_name = T
+/
+
 &tao_d2_data
     d2_data%name = "orbit"
     universe = 1
