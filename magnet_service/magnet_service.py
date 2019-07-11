@@ -199,9 +199,10 @@ class MagnetService(simulacrum.Service):
     
     def get_magnet_list_from_model(self):
         element_list = []
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele Kicker::*,Quadrupole::*,Sbend::*"})
-        for row in self.cmd_socket.recv_pyobj()['result']:
-            print(row)
+        # Until bend overlays are working better, I am not simulating them.
+        # self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele -no_slaves Kicker::*,Quadrupole::*,Sbend::*"})
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele -no_slaves Kicker::*,Quadrupole::*"})
+        for row in self.cmd_socket.recv_pyobj()['result'][:-1]:
             element_list.append(row.split(None, 3)[1])
         return element_list
     
