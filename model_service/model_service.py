@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import argparse
 import sys
 import pickle
 import pytao
@@ -9,16 +10,17 @@ import zmq
 from zmq.asyncio import Context
 import simulacrum 
 
+model_service_dir = os.path.dirname(os.path.realpath(__file__))
 #set up python logger
 L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class ModelService:
-    def __init__(self):
+    def __init__(self, init_file):
         tao_lib = os.environ.get('TAO_LIB', '')
         self.tao = pytao.Tao(so_lib=tao_lib)
-        path_to_lattice = os.path.join(os.path.dirname(os.path.realpath(__file__)), "lcls.lat")
-        path_to_init = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tao.init")
-        self.tao.init("-noplot -lat {lat_path} -init {init_path}".format(lat_path=path_to_lattice, init_path=path_to_init))
+        L.debug("Initializing Tao...")
+        self.tao.init("-noplot -init {init_file}".format(init_file=init_file))
+        L.debug("Tao initialization complete!")
         self.ctx = Context.instance()
         self.model_broadcast_socket = zmq.Context().socket(zmq.PUB)
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
@@ -164,6 +166,12 @@ def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
 
 if __name__=="__main__":
-    serv = ModelService()
+    parser = argparse.ArgumentParser(description="Simulacrum Model Service")
+    parser.add_argument(
+        'tao_init_file',
+        help='A Tao .init file.  Make sure this .init file specifies a &tao_design_lattice to use.'
+    )
+    model_service_args = parser.parse_args()
+    serv = ModelService(init_file=model_service_args.tao_init_file)
     serv.start()
 
