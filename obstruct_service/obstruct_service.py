@@ -328,10 +328,6 @@ class ObstructorService(simulacrum.Service):
             L.info(msg)
         #restart global computation
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set global lattice_calc_on=T"})
-        #update orbit?
-        msg = self.cmd_socket.recv_pyobj()['result']
-        L.info(msg)
-        self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
         msg = self.cmd_socket.recv_pyobj()['result']
         L.info(msg)
     
