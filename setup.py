@@ -32,7 +32,7 @@ classifiers = [
     'License :: OSI Approved :: BSD License'
 ]
 
-install_requires=['caproto']
+install_requires=['caproto', 'numpy', 'p4p', 'pyzmq']
 
 setup(name='simulacrum',
       version=versioneer.get_version(),
