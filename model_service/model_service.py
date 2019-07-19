@@ -98,29 +98,6 @@ class ModelService:
         self.pva_needs_refresh = True
         self.need_zmq_broadcast = True
     
-    def set_corrector_strength(self, name, new_strength, axis=None):
-        if not axis:
-            if name.startswith("XC"):
-                axis = "h"
-            elif name.startswith("YC"):
-                axis = "v"
-            else:
-                raise Exception("Could not determine if corrector is horizontal or vertical.")
-        axis = axis.lower()
-        if axis == "x":
-            axis = "h"
-        elif axis == "y":
-            axis = "v"
-        if axis not in ["h", "v"]:
-            raise Exception("Invalid Axis")
-        result = self.tao_cmd("set ele {element} {axis}kick = {strength}".format(element=name, axis=axis, strength=new_strength))
-        result = "".join(result)
-        if "ERROR" in result:
-            raise Exception(result)
-        else:
-            self.model_changed()
-        
-    
     def get_orbit(self):
         #Get X Orbit
         x_orb_text = self.tao_cmd("show data orbit.x")[3:-2]
@@ -200,13 +177,7 @@ class ModelService:
             p = await s.recv_pyobj()
             msg = "Got a message: {}".format(p)
             L.info(msg)
-            if p['cmd'] == 'corr':
-                try:
-                    self.set_corrector_strength(name=p['name'], new_strength=p['val'], axis=p.get('axis'))
-                    await s.send_pyobj({'status': 'ok'})
-                except Exception as e:
-                    await s.send_pyobj({'status': 'fail', 'err': e})
-            elif p['cmd'] == 'tao':
+            if p['cmd'] == 'tao':
                 try:
                     retval = self.tao_cmd(p['val'])
                     await s.send_pyobj({'status': 'ok', 'result': retval})
