@@ -27,7 +27,12 @@ class ModelService:
         self.model_broadcast_socket = zmq.Context().socket(zmq.PUB)
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         self.loop = asyncio.get_event_loop()
-        self.pv = SharedPV(nt=NTTable([("element", "s"), ("s", "d"), ("l", "d"),
+        self.live_twiss_pv = SharedPV(nt=NTTable([("element", "s"), ("s", "d"), ("l", "d"),
+                                       ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"),
+                                       ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d")]), 
+                           initial=self.get_twiss_table(),
+                           loop=self.loop)
+        self.design_twiss_pv = SharedPV(nt=NTTable([("element", "s"), ("s", "d"), ("l", "d"),
                                        ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"),
                                        ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d")]), 
                            initial=self.get_twiss_table(),
@@ -37,7 +42,8 @@ class ModelService:
     
     def start(self):
         L.info("Starting Model Service.")
-        pva_server = PVAServer(providers=[{"BMAD:SYS0:1:TWISS": self.pv}])
+        pva_server = PVAServer(providers=[{"BMAD:SYS0:1:FULL_MACHINE:LIVE:TWISS": self.live_twiss_pv,
+                                           "BMAD:SYS0:1:FULL_MACHINE:DESIGN:TWISS": self.design_twiss_pv}])
         zmq_task = self.loop.create_task(self.recv())
         pva_refresh_task = self.loop.create_task(self.refresh_pva_table())
         broadcast_task = self.loop.create_task(self.broadcast_model_changes())
@@ -71,7 +77,7 @@ class ModelService:
         """
         while True:
             if self.pva_needs_refresh:
-                self.pv.post(self.get_twiss_table())
+                self.live_twiss_pv.post(self.get_twiss_table())
                 self.pva_needs_refresh = False
             await asyncio.sleep(1.0)
     
