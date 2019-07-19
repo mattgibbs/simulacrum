@@ -311,8 +311,6 @@ class KlystronService(simulacrum.Service):
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": cmd})
         msg = self.cmd_socket.recv_pyobj()['result']
         L.info(msg)
-        self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
-        self.cmd_socket.recv_pyobj()
    
 def main():
     service = KlystronService()
