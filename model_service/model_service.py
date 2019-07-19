@@ -207,12 +207,8 @@ class ModelService:
                 except Exception as e:
                     await s.send_pyobj({'status': 'fail', 'err': e})
             elif p['cmd'] == 'send_orbit':
-                try:
-                    
-                    self.model_changed() #Sets the flag that will cause an orbit broadcast
-                    await s.send_pyobj({'status': 'ok'})
-                except Exception as e:
-                    await s.send_pyobj({'status': 'fail', 'err': e})
+                self.model_changed() #Sets the flag that will cause an orbit broadcast
+                await s.send_pyobj({'status': 'ok'})
             elif p['cmd'] == 'echo':
                     await s.send_pyobj({'status': 'ok', 'result': p['val']})
             elif p['cmd'] == 'send_profiles_twiss':
