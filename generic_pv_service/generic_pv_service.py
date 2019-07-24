@@ -1,4 +1,6 @@
 import os
+import json
+import numpy as np
 from caproto import (ChannelString, ChannelEnum, ChannelDouble,
                      ChannelChar, ChannelData, ChannelInteger,
                      ChannelByte, ChannelShort, AccessRights,
@@ -96,7 +98,18 @@ class GenericPVService(simulacrum.Service):
                 initial_value = None
                 if len(pv_args) > 2:
                     initial_value = pv_args[2]
-                chan = make_channel(pv, type_for_pv, initial_value=class_for_type[type_for_pv](initial_value))
+                    array_value = None
+                    try:
+                        parsed_val = json.loads(initial_value)
+                        if isinstance(parsed_val, list):
+                            array_value = np.array(parsed_val)
+                    except ValueError:
+                        pass
+                    if array_value is not None:
+                        initial_value = array_value
+                    else:
+                        initial_value = class_for_type[type_for_pv](initial_value)
+                chan = make_channel(pv, type_for_pv, initial_value=initial_value)
                 self[pv] = chan
         
 def main():
