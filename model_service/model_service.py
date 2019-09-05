@@ -6,6 +6,7 @@ import pytao
 import numpy as np
 import asyncio
 import zmq
+import time
 from p4p.nt import NTTable
 from p4p.server import Server as PVAServer
 from p4p.server.asyncio import SharedPV
@@ -27,14 +28,20 @@ class ModelService:
         self.model_broadcast_socket = zmq.Context().socket(zmq.PUB)
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         self.loop = asyncio.get_event_loop()
-        self.live_twiss_pv = SharedPV(nt=NTTable([("element", "s"), ("s", "d"), ("l", "d"),
-                                       ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"),
-                                       ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d")]), 
+        model_table = NTTable([("element", "s"), ("device_name", "s"),
+                                       ("s", "d"), ("length", "d"), ("p0c", "d"),
+                                       ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"), ("psi_x", "d"),
+                                       ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d"), ("psi_y", "d"),
+                                       ("r11", "d"), ("r12", "d"), ("r13", "d"), ("r14", "d"), ("r15", "d"), ("r16", "d"),
+                                       ("r21", "d"), ("r22", "d"), ("r23", "d"), ("r24", "d"), ("r25", "d"), ("r26", "d"),
+                                       ("r31", "d"), ("r32", "d"), ("r33", "d"), ("r34", "d"), ("r35", "d"), ("r36", "d"),
+                                       ("r41", "d"), ("r42", "d"), ("r43", "d"), ("r44", "d"), ("r45", "d"), ("r46", "d"),
+                                       ("r51", "d"), ("r52", "d"), ("r53", "d"), ("r54", "d"), ("r55", "d"), ("r56", "d"),
+                                       ("r61", "d"), ("r62", "d"), ("r63", "d"), ("r64", "d"), ("r65", "d"), ("r66", "d")])
+        self.live_twiss_pv = SharedPV(nt=model_table, 
                            initial=self.get_twiss_table(),
                            loop=self.loop)
-        self.design_twiss_pv = SharedPV(nt=NTTable([("element", "s"), ("s", "d"), ("l", "d"),
-                                       ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"),
-                                       ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d")]), 
+        self.design_twiss_pv = SharedPV(nt=model_table, 
                            initial=self.get_twiss_table(),
                            loop=self.loop)
         self.pva_needs_refresh = False
@@ -56,17 +63,31 @@ class ModelService:
             pva_server.stop()
     
     def get_twiss_table(self):
-        full_lattice_text = self.tao_cmd("show lat -at alpha_a -at beta_a -at eta_a -at etap_a -at alpha_b -at beta_b -at eta_b -at etap_b BEGINNING:END")
+        start_time = time.time()
+        full_lattice_text = self.tao_cmd("show lat -at alpha_a -at beta_a -at eta_a -at etap_a -at phi_a -at alpha_b -at beta_b -at eta_b -at etap_b -at phi_b -at p0c BEGINNING:END")
         table_rows = []
         for row in full_lattice_text[3:-4]:
-            _, name, _, s, l, alpha_x, beta_x, eta_x, etap_x, alpha_y, beta_y, eta_y, etap_y = row.split(None, 13)
+            element_index, name, _, s, l, alpha_x, beta_x, eta_x, etap_x, psi_x, alpha_y, beta_y, eta_y, etap_y, psi_y, p0c = row.split(None, 16)
             try:
                 l = float(l)
             except ValueError:
                 l = 0.0
-            table_rows.append({"element": name, "s": s, "l": l, 
-                               "alpha_x": alpha_x, "beta_x": beta_x, "eta_x": eta_x, "etap_x": etap_x,
-                               "alpha_y": alpha_y, "beta_y": beta_y, "eta_y": eta_y, "etap_y": etap_y})
+            rmat = _parse_tao_mat6(self.tao.cmd('python ele:mat6 {index}|model mat6'.format(index=element_index)))
+            try:
+                device_name = simulacrum.util.convert_element_to_device(name)
+            except KeyError:
+                device_name = ""
+            table_rows.append({"element": name, "device_name": device_name, "s": s, "length": l, "p0c": p0c,
+                               "alpha_x": alpha_x, "beta_x": beta_x, "eta_x": eta_x, "etap_x": etap_x, "psi_x": psi_x,
+                               "alpha_y": alpha_y, "beta_y": beta_y, "eta_y": eta_y, "etap_y": etap_y, "psi_y": psi_y,
+                               "r11": rmat[0,0], "r12": rmat[0,1], "r13": rmat[0,2], "r14": rmat[0,3], "r15": rmat[0,4], "r16": rmat[0,5],
+                               "r21": rmat[1,0], "r22": rmat[1,1], "r23": rmat[1,2], "r24": rmat[1,3], "r25": rmat[1,4], "r26": rmat[1,5],
+                               "r31": rmat[2,0], "r32": rmat[2,1], "r33": rmat[2,2], "r34": rmat[2,3], "r35": rmat[2,4], "r36": rmat[2,5],
+                               "r41": rmat[3,0], "r42": rmat[3,1], "r43": rmat[3,2], "r44": rmat[3,3], "r45": rmat[3,4], "r46": rmat[3,5],
+                               "r51": rmat[4,0], "r52": rmat[4,1], "r53": rmat[4,2], "r54": rmat[4,3], "r55": rmat[4,4], "r56": rmat[4,5],
+                               "r61": rmat[5,0], "r62": rmat[5,1], "r63": rmat[5,2], "r64": rmat[5,3], "r65": rmat[5,4], "r66": rmat[5,5]})
+        end_time = time.time()
+        L.debug("get_twiss_table took %f seconds", end_time - start_time)
         return table_rows
     
     async def refresh_pva_table(self):
@@ -200,6 +221,9 @@ class ModelService:
 
 def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
+
+def _parse_tao_mat6(text):
+    return np.array([[float(num) for num in line.split(";")[3:]] for line in text])
 
 if __name__=="__main__":
     serv = ModelService()
