@@ -38,11 +38,12 @@ class ModelService:
                                        ("r41", "d"), ("r42", "d"), ("r43", "d"), ("r44", "d"), ("r45", "d"), ("r46", "d"),
                                        ("r51", "d"), ("r52", "d"), ("r53", "d"), ("r54", "d"), ("r55", "d"), ("r56", "d"),
                                        ("r61", "d"), ("r62", "d"), ("r63", "d"), ("r64", "d"), ("r65", "d"), ("r66", "d")])
+        initial_table = self.get_twiss_table()
         self.live_twiss_pv = SharedPV(nt=model_table, 
-                           initial=self.get_twiss_table(),
+                           initial=initial_table,
                            loop=self.loop)
         self.design_twiss_pv = SharedPV(nt=model_table, 
-                           initial=self.get_twiss_table(),
+                           initial=initial_table,
                            loop=self.loop)
         self.pva_needs_refresh = False
         self.need_zmq_broadcast = False
@@ -64,22 +65,45 @@ class ModelService:
     
     def get_twiss_table(self):
         start_time = time.time()
-        full_lattice_text = self.tao_cmd("show lat -at alpha_a -at beta_a -at eta_a -at etap_a -at phi_a -at alpha_b -at beta_b -at eta_b -at etap_b -at phi_b -at p0c BEGINNING:END")
+        #First we get a list of all the elements.
+        element_list = self.tao_cmd("python lat_ele 1@0")
+        element_list = [s.split(";") for s in element_list]
+        element_id_list, element_name_list = zip(*element_list)
+        last_element_index = 0
+        for i, row in enumerate(reversed(element_name_list)):
+            if row == "END":
+                last_element_index = len(element_name_list)-1-i
+                break
+        element_name_list = element_name_list[1:last_element_index+1]
+        element_id_list = element_id_list[1:last_element_index+1]
+        s_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.s")
+        l_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.l")
+        p0c_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.p0c")
+        alpha_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.alpha")
+        beta_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.beta")
+        eta_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.eta")
+        etap_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.etap")
+        psi_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.phi")
+        alpha_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.alpha")
+        beta_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.beta")
+        eta_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.eta")
+        etap_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.etap")
+        psi_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.phi")
+        
         table_rows = []
-        for row in full_lattice_text[3:-4]:
-            element_index, name, _, s, l, alpha_x, beta_x, eta_x, etap_x, psi_x, alpha_y, beta_y, eta_y, etap_y, psi_y, p0c = row.split(None, 16)
+        for i, element_id in enumerate(element_id_list):
+            element_name = element_name_list[i]
             try:
-                l = float(l)
-            except ValueError:
-                l = 0.0
-            rmat = _parse_tao_mat6(self.tao.cmd('python ele:mat6 {index}|model mat6'.format(index=element_index)))
-            try:
-                device_name = simulacrum.util.convert_element_to_device(name)
+                device_name = simulacrum.util.convert_element_to_device(element_name)
             except KeyError:
                 device_name = ""
-            table_rows.append({"element": name, "device_name": device_name, "s": s, "length": l, "p0c": p0c,
-                               "alpha_x": alpha_x, "beta_x": beta_x, "eta_x": eta_x, "etap_x": etap_x, "psi_x": psi_x,
-                               "alpha_y": alpha_y, "beta_y": beta_y, "eta_y": eta_y, "etap_y": etap_y, "psi_y": psi_y,
+            rmat = _parse_tao_mat6(self.tao.cmd('python ele:mat6 1@0>>{index}|model mat6'.format(index=element_id)))
+            if rmat.shape != (6,6):
+                rmat = np.empty((6,6))
+                rmat.fill(np.nan)
+            table_rows.append({"element": element_name, "device_name": device_name, "s": s_list[i], "length": l_list[i], "p0c": p0c_list[i],
+                               "alpha_x": alpha_x_list[i], "beta_x": beta_x_list[i], "eta_x": eta_x_list[i], "etap_x": etap_x_list[i], "psi_x": psi_x_list[i],
+                               "alpha_y": alpha_y_list[i], "beta_y": beta_y_list[i], "eta_y": eta_y_list[i], "etap_y": etap_y_list[i], "psi_y": psi_y_list[i],
                                "r11": rmat[0,0], "r12": rmat[0,1], "r13": rmat[0,2], "r14": rmat[0,3], "r15": rmat[0,4], "r16": rmat[0,5],
                                "r21": rmat[1,0], "r22": rmat[1,1], "r23": rmat[1,2], "r24": rmat[1,3], "r25": rmat[1,4], "r26": rmat[1,5],
                                "r31": rmat[2,0], "r32": rmat[2,1], "r33": rmat[2,2], "r34": rmat[2,3], "r35": rmat[2,4], "r36": rmat[2,5],
@@ -120,12 +144,15 @@ class ModelService:
         self.need_zmq_broadcast = True
     
     def get_orbit(self):
+        start_time = time.time()
         #Get X Orbit
         x_orb_text = self.tao_cmd("show data orbit.x")[3:-2]
         x_orb = _orbit_array_from_text(x_orb_text)
         #Get Y Orbit
         y_orb_text = self.tao_cmd("show data orbit.y")[3:-2]
         y_orb = _orbit_array_from_text(y_orb_text)
+        end_time = time.time()
+        L.debug("get_orbit took %f seconds", end_time-start_time)
         return np.stack((x_orb, y_orb))
 
     def get_prof_orbit(self):
