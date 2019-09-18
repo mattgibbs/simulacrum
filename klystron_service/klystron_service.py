@@ -25,7 +25,10 @@ class KlystronPV(PVGroup):
     hdsc = pvproperty(value=clear_hdsc, name=':HDSC')
     dsta = pvproperty(value=clear_dsta, name=':DSTA')
     stat = pvproperty(value=clear_stat, name=':STAT')
-    bc1s =  pvproperty(value=0, name=':BEAMCODE1_STAT')
+    bc1_tctl =  pvproperty(value=0, name=':BEAMCODE1_TCTL', dtype=ChannelType.ENUM,
+                            enum_strings=("Deactivate", "Reactivate", "Activate"))
+    bc1_tstat = pvproperty(value=0, name=':BEAMCODE1_TSTAT', dtype=ChannelType.ENUM,
+                            enum_strings=("Deactivated", "Activated"), read_only=True)
     trim = pvproperty(value=0, name=':TRIMPHAS', dtype=ChannelType.ENUM,
                       enum_strings=("Done", "TRIM"))
     mod_reset = pvproperty(value=0, name=':MOD:RESET', dtype=ChannelType.ENUM,
@@ -39,10 +42,11 @@ class KlystronPV(PVGroup):
         self.orig_enld = initial_values[0]
         self.tripped = False
         self.hv_ctrl_on = True
+        self.has_accel_triggers = True
         self.enld._data['value'] = initial_values[0]
         self.pdes._data['value'] = initial_values[1]
         self.phas._data['value'] = initial_values[1]  
-        self.bc1s._data['value'] = 1
+        self.bc1_tctl._data['value'] = 1
         self.change_callback = change_callback 
 
     async def interlock_trip(self):
@@ -54,7 +58,7 @@ class KlystronPV(PVGroup):
         dsta2 = dsta2 & ~(1 << 7) #Turn off "Mod HV on"
         self.dsta._data['value'] = [dsta1, dsta2]
         await self.dsta.publish(0) 
-        self.change_callback(self, False, "HV_ON")
+        await self.on_off_changed()
     
     @mod_reset.putter
     async def mod_reset(self, instance, value):
@@ -90,8 +94,8 @@ class KlystronPV(PVGroup):
         dsta2 = dsta2 & ~(1 << 4) #Turn off the "Mod HV Ready" bit
         self.dsta._data['value'] = [dsta1, dsta2]
         await self.dsta.publish(0)
-        self.change_callback(self, True, "HV_ON")
         self.hv_ctrl_on = True
+        await self.on_off_changed()
     
     async def mod_off(self, hv_ready=True):
         if self.tripped or (not self.hv_ctrl_on):
@@ -102,8 +106,8 @@ class KlystronPV(PVGroup):
             dsta2 = dsta2 | (1 << 4) #Turn on the "Mod HV Ready" bit
         self.dsta._data['value'] = [dsta1, dsta2]
         await self.dsta.publish(0)
-        self.change_callback(self, False, "HV_ON")
         self.hv_ctrl_on = False
+        await self.on_off_changed()
 
     @swrd.putter
     async def swrd(self, instance, value):
@@ -250,7 +254,7 @@ class KlystronPV(PVGroup):
             await ioc.phas.write(ioc.pdes.value)
             self.change_callback(self, ioc.phas.value, "PHAS")
         else:
-            L.warning:("Warning, only valid function is TRIM.")
+            L.warning("Warning, only valid function is TRIM.")
         return 0
 
     @enld.putter
@@ -258,11 +262,16 @@ class KlystronPV(PVGroup):
         self.change_callback(self, value, "ENLD")
         return value
 
-    @bc1s.putter
-    async def bc1s(self, instance, value):
-        self.change_callback(self, value, "BEAMCODE1_STAT")
+    @bc1_tctl.putter
+    async def bc1_tctl(self, instance, value):
+        self.has_accel_triggers = value in ("Activate", "Reactivate")
+        await self.on_off_changed()
+        await self.bc1_tstat.publish(1 if self.has_accel_triggers else 0)
         return value
-
+    
+    async def on_off_changed(self):
+        is_on = self.has_accel_triggers and self.hv_ctrl_on and not self.tripped
+        self.change_callback(self, is_on, "IS_ON")
  
 
 def _parse_klys_table(table):
@@ -302,7 +311,7 @@ class KlystronService(simulacrum.Service):
             klys_attr = "Phase_Deg"
         elif parameter == "ENLD": 
             klys_attr = "ENLD_MeV"
-        elif parameter == "BEAMCODE1_STAT" or parameter == "HV_ON":
+        elif parameter == "IS_ON":
             klys_attr = "is_on"
             value =  'T' if value else 'F'
             element = element[2:]+'*'  #O_K30_8 overlay to K30_8*
