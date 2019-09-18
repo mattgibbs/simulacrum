@@ -35,6 +35,7 @@ class SubboosterPV(PVGroup):
     """
     pdes = pvproperty(value=0.0, name=':PDES')  
     phas = pvproperty(value=0.0, name=':PHAS', read_only=True)
+    poly = pvproperty(value=np.zeros(6), name=':POLY', dtype=ChannelType.DOUBLE)
     def __init__(self, device_name, element_name, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device_name = device_name
@@ -48,7 +49,7 @@ class KlystronPV(PVGroup):
     ades = pvproperty(value=0.0, name=':AMPL')
     bvjt = pvproperty(value=0.0, name=':BVJT')
     mkbvftpjasigma = pvproperty(value=0.0, name=':MKBVFTPJASIGMA')
-
+    poly = pvproperty(value=np.zeros(6), name=':POLY', dtype=ChannelType.DOUBLE)
     # The seemingly random numbers in clear_* are the values these status
     # PVs have when a klystron is working normally, with no faults.
     clear_swrd = 0
