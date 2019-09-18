@@ -1,3 +1,4 @@
+import numpy as np
 import sys
 import os
 import asyncio
@@ -11,10 +12,39 @@ from zmq.asyncio import Context
 #set up python logger
 L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
+class CudKlys(PVGroup):
+   onbeam1 = pvproperty(value=0.0, name=':ONBEAM1')
+   status = pvproperty(value=0.0, name=':STATUS')
+   statusdesc = pvproperty(value='NONE', name=':STATUS.DESC',dtype =ChannelType.STRING)
+   def __init__(self, device_name, element_name, change_callback, initial_values, *args, **kwargs):
+       super().__init__(*args, **kwargs)
+       self.device_name = device_name
+       self.element_name = element_name
+       self.change_callback = change_callback
+       self.onbeam1 = initial_values
+       self.status = initial_values
+       self.statusdesc = 'None'
+
+class SubboosterPV(PVGroup):
+       pdes = pvproperty(value=0.0, name=':PDES')  
+       phas = pvproperty(value=0.0, name=':PHAS')
+       def __init__(self, device_name, element_name, change_callback, initial_values, *args, **kwargs):
+          super().__init__(*args, **kwargs)
+          self.device_name = device_name
+          self.element_name = element_name
+          self.change_callback = change_callback
+
+#------------------------------------------------------------------------------------------------------
 class KlystronPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES')  
     phas = pvproperty(value=0.0, name=':PHAS', read_only=True)
     enld = pvproperty(value=0.0, name=':ENLD')
+    #poly = pvproperty(value=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), name=':POLY')
+    ades = pvproperty(value=0.0, name=':ADES')
+    ades = pvproperty(value=0.0, name=':AMPL')
+    bvjt = pvproperty(value=0.0, name=':BVJT')
+    mkbvftpjasigma = pvproperty(value=0.0, name=':MKBVFTPJASIGMA')
+
     # The seemingly random numbers in clear_* are the values these status
     # PVs have when a klystron is working normally, with no faults.
     clear_swrd = 0
@@ -37,7 +67,7 @@ class KlystronPV(PVGroup):
                       enum_strings=("OFF", "ON"))
     def __init__(self, device_name, element_name, change_callback, initial_values, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.device_name = device_name
+        self.device_name = device_name 
         self.element_name = element_name
         self.orig_enld = initial_values[0]
         self.tripped = False
@@ -272,14 +302,21 @@ class KlystronPV(PVGroup):
     async def on_off_changed(self):
         is_on = self.has_accel_triggers and self.hv_ctrl_on and not self.tripped
         self.change_callback(self, is_on, "IS_ON")
- 
 
 def _parse_klys_table(table):
     splits = [row.split() for row in table]
     return {'KLYS:LI{0}:{1}1'.format(ele_name[3:5],ele_name[6:8]): ( float(bmadEnld), float(bmadPhas), float(bmadEnld) > 1 ) for (_, ele_name, _, _, _, bmadEnld, bmadPhas) in splits}
 
 def convert_device_to_element(device_name):
-    return 'O_K{0}_{1}'.format(device_name[7:9],device_name[10])
+   return 'O_K{0}_{1}'.format(device_name[7:9],device_name[10])
+    
+def convert_sbst_to_element(device_name):
+   return 'O_S{0}_{1}'.format(device_name[7:9],device_name[10])
+
+def _parse_cudklys_table(table):
+     splits = [row.split() for row in table]
+     return {'CUDKLYS:LI{0}:{1}'.format(ele_name[3:5], ele_name[6:8]): 0 for (_, ele_name, _, _, _, _, _) in splits}  
+
 
 class KlystronService(simulacrum.Service):
     attr_for_klys_type = {"ENLD": "ENLD_MeV", "PHAS":"PHAS_Deg"} 
@@ -289,23 +326,45 @@ class KlystronService(simulacrum.Service):
         #cmd socket is a synchronous socket, we don't want the asyncio context.
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
-        init_vals = self.get_klystron_ACTs_from_model()
-        klys_pvs = {device_name: KlystronPV(device_name, convert_device_to_element(device_name), self.on_klystron_change, initial_values=init_vals[device_name], prefix=device_name) 
-                    for device_name in init_vals.keys()} 
-        L.info(init_vals)
+        init_vals,init_CudVals = self.get_klystron_ACTs_from_model()
+        init_SbstVals = self.get_sbst_ACTs_from_model()
+        klys_pvs = {device_name: KlystronPV(device_name, convert_device_to_element(device_name), self.on_klystron_change, initial_values=init_vals[device_name], prefix=device_name) for device_name in init_vals.keys()}
+        print (klys_pvs)
+        print (init_CudVals)
+        CudKlys_pvs = {device_name: CudKlys(device_name,convert_device_to_element(device_name),[],initial_values=init_CudVals[device_name], prefix=device_name)for device_name in init_CudVals.keys()}
+        print (CudKlys_pvs)
+        print (f'sbst = {init_SbstVals}')
+        sbst_pvs =  {device_name: SubboosterPV(device_name,convert_sbst_to_element(device_name),[],initial_values=init_SbstVals[device_name], prefix=device_name)for device_name in init_SbstVals.keys()}
+        print(sbst_pvs)
+        L.info(init_vals)  
         self.add_pvs(klys_pvs)
+        self.add_pvs(CudKlys_pvs)
+        self.add_pvs(sbst_pvs)
                                                             
         L.info("Initialization complete.")
 
     def get_klystron_ACTs_from_model(self):
         init_vals = {}
+        init_CudVals = {}
+       
         for (attr, dev_list, parse_func) in [("ENLD_MeV", "O_K*", _parse_klys_table)]:
             self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute ENLD_MeV -attribute Phase_Deg O_K*"})
             table = self.cmd_socket.recv_pyobj()
+            injectorStat = (['0 O_K20_5 Lcavity 5.6 --- 100 0', '0 O_K20_6 Lcavity 0.5 --- 6 0' , '0 O_K20_7 Lcavity 1.518 --- 58.5 0' ,  '0 O_K20_8 Lcavity 5.362 --- 114.0 0',  '0 O_K24_8 Lcavity 160 --- 114.0 0'] )
             init_vals.update(parse_func(table['result']))
+            init_vals.update(parse_func(injectorStat))
+            init_CudVals.update(_parse_cudklys_table(table['result']))
+            init_CudVals.update(_parse_cudklys_table(injectorStat))
+        return init_vals, init_CudVals
+
+    def get_sbst_ACTs_from_model(self):
+        init_vals = {} ## TODO: Integrate SBST phase with model Overlord
+        for ii in range(21,31):
+            init_vals[f'SBST:LI{ii}:1'] = (0,0)
         return init_vals
- 
+
     def on_klystron_change(self, klystron_pv, value, parameter):
+        print(f'on_klystron_chage self = {self}')
         element = klystron_pv.element_name
         if parameter == "PHAS":
             klys_attr = "Phase_Deg"
@@ -315,6 +374,7 @@ class KlystronService(simulacrum.Service):
             klys_attr = "is_on"
             value =  'T' if value else 'F'
             element = element[2:]+'*'  #O_K30_8 overlay to K30_8*
+
         cmd = f'set ele {element} {klys_attr} = {value}'
         L.info(cmd)
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": cmd})
