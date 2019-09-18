@@ -13,7 +13,7 @@ L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0
 
 class KlystronPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES')  
-    phas = pvproperty(value=0.0, name=':PHAS')
+    phas = pvproperty(value=0.0, name=':PHAS', read_only=True)
     enld = pvproperty(value=0.0, name=':ENLD')
     # The seemingly random numbers in clear_* are the values these status
     # PVs have when a klystron is working normally, with no faults.
