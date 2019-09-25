@@ -238,17 +238,9 @@ class MagnetService(simulacrum.Service):
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} {attr} = {val}".format(element=magnet_pv.element_name, 
                                                                                                    attr=mag_attr,
                                                                                                    val=conv(value, l))})
-        
         self.cmd_socket.recv_pyobj()
-        L.debug('Updated {}.'.format( magnet_pv.device_name ) )
-        self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
-        self.cmd_socket.recv_pyobj()
-        self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
-        self.cmd_socket.recv_pyobj()
-        self.cmd_socket.send_pyobj({"cmd": "send_und_twiss"})
-        self.cmd_socket.recv_pyobj()
+        L.info('Updated {}.'.format(magnet_pv.device_name))
        
-
 def main():
     service = MagnetService()
     loop = asyncio.get_event_loop()
