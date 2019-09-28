@@ -51,6 +51,7 @@ class MagnetPV(PVGroup):
         self.bcon._data['value'] = float(initial_value['bact'])
         self.bdes._data['value'] = float(initial_value['bact'])
         self.bact._data['value'] = float(initial_value['bact'])
+        self.bctrl._data['value'] = float(initial_value['bact'])
         if 'precision' in initial_value:
             prec = int(initial_value['precision'])
             self.bcon._data['precision'] = prec
