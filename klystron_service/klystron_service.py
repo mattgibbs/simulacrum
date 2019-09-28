@@ -46,7 +46,7 @@ class KlystronPV(PVGroup):
     phas = pvproperty(value=0.0, name=':PHAS', read_only=True)
     enld = pvproperty(value=0.0, name=':ENLD')
     ades = pvproperty(value=0.0, name=':ADES')
-    ades = pvproperty(value=0.0, name=':AMPL')
+    ampl = pvproperty(value=0.0, name=':AMPL')
     bvjt = pvproperty(value=0.0, name=':BVJT')
     mkbvftpjasigma = pvproperty(value=0.0, name=':MKBVFTPJASIGMA')
     poly = pvproperty(value=np.zeros(6), name=':POLY', dtype=ChannelType.DOUBLE)
