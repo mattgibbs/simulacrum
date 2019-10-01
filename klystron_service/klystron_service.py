@@ -42,11 +42,11 @@ class SubboosterPV(PVGroup):
         self.element_name = element_name
 
 class KlystronPV(PVGroup):
-    pdes = pvproperty(value=0.0, name=':PDES')  
-    phas = pvproperty(value=0.0, name=':PHAS', read_only=True)
+    pdes = pvproperty(value=0.0, name=':PDES', precision=1)  
+    phas = pvproperty(value=0.0, name=':PHAS', read_only=True, precision=1)
     enld = pvproperty(value=0.0, name=':ENLD')
-    ades = pvproperty(value=0.0, name=':ADES')
-    ampl = pvproperty(value=0.0, name=':AMPL')
+    ades = pvproperty(value=100.0, name=':ADES', precision=1)
+    ampl = pvproperty(value=100.0, name=':AMPL', precision=1)
     bvjt = pvproperty(value=0.0, name=':BVJT')
     mkbvftpjasigma = pvproperty(value=0.0, name=':MKBVFTPJASIGMA')
     poly = pvproperty(value=np.zeros(6), name=':POLY', dtype=ChannelType.DOUBLE)
@@ -92,7 +92,8 @@ class KlystronPV(PVGroup):
         dsta2 = dsta2 & ~(1 << 3) #Turn off "Mod interlocks complete"
         dsta2 = dsta2 & ~(1 << 7) #Turn off "Mod HV on"
         self.dsta._data['value'] = [dsta1, dsta2]
-        await self.dsta.publish(0) 
+        await self.dsta.publish(0)
+        await self.mod_hv_ctrl.write('OFF') # Only for SimUI
         await self.on_off_changed()
     
     @mod_reset.putter
@@ -119,6 +120,7 @@ class KlystronPV(PVGroup):
             await self.mod_on()
         else:
             await self.mod_off()
+        
         return value
 
     async def mod_on(self):
@@ -133,7 +135,8 @@ class KlystronPV(PVGroup):
         await self.on_off_changed()
     
     async def mod_off(self, hv_ready=True):
-        if self.tripped or (not self.hv_ctrl_on):
+        #if self.tripped or (not self.hv_ctrl_on):
+        if not self.hv_ctrl_on:
             return
         dsta1, dsta2 = self.dsta.value
         dsta2 = dsta2 & ~(1 << 7) #Zero the "Mod HV On" bit
@@ -306,6 +309,10 @@ class KlystronPV(PVGroup):
     
     async def on_off_changed(self):
         is_on = self.has_accel_triggers and self.hv_ctrl_on and not self.tripped
+        if is_on:
+            await self.ampl.write(100.0)
+        else:
+            await self.ampl.write(0.0)
         self.change_callback(self, is_on, "IS_ON")
 
 def _parse_klys_table(table):
