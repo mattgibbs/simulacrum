@@ -133,6 +133,13 @@ class MagnetPV(PVGroup):
         ioc = instance.group
         self.bdes_for_undo = ioc.bdes.value
         return value
+    
+    @bact.putter
+    async def bact(self, instance, value):
+        ioc = instance.group
+        self.bctrl._data['value'] = value
+        await self.bctrl.publish(0)
+        return value
 
 def _parse_corr_table(table):
     """ Build a dictionary of element_name -> (BACT)."""
