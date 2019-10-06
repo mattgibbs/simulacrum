@@ -124,6 +124,7 @@ class MagnetPV(PVGroup):
     @bctrl.putter
     async def bctrl(self, instance, value):
         ioc = instance.group
+        instance._data['value'] = value
         await ioc.bdes.write(value)
         await ioc.ctrl.write("PERTURB")
         return value
@@ -131,8 +132,11 @@ class MagnetPV(PVGroup):
     @bact.putter
     async def bact(self, instance, value):
         ioc = instance.group
-        self.bctrl._data['value'] = value
-        await self.bctrl.publish(0)
+        bctrl_val = self.bctrl._data['value']
+        if bctrl_val != value:
+            print("bctrl = {}, value = {}".format(bctrl_val, value))
+            self.bctrl._data['value'] = value
+            await self.bctrl.publish(0)
         return value
     
     @bdes.putter
