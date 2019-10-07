@@ -153,9 +153,12 @@ class ModelService:
         #Get Y Orbit
         y_orb_text = self.tao_cmd("show data orbit.y")[3:-2]
         y_orb = _orbit_array_from_text(y_orb_text)
+        #Get e_tot, which we use to see if the single particle beam is dead
+        e_text = self.tao_cmd("show data orbit.e")[3:-2]
+        e = _orbit_array_from_text(e_text)
         end_time = time.time()
         L.debug("get_orbit took %f seconds", end_time-start_time)
-        return np.stack((x_orb, y_orb))
+        return np.stack((x_orb, y_orb, e))
 
     def get_prof_orbit(self):
         #Get X Orbit

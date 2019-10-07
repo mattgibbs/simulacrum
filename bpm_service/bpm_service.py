@@ -3,6 +3,7 @@ import sys
 import asyncio
 import numpy as np
 from caproto.server import ioc_arg_parser, run, pvproperty, PVGroup
+from caproto import AlarmStatus, AlarmSeverity
 import simulacrum
 import zmq
 from zmq.asyncio import Context
@@ -13,12 +14,12 @@ L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0
 
 class BPMPV(PVGroup):
     x = pvproperty(value=0.0, name=':X', read_only=True, mock_record='ai',
-                   upper_disp_limit=3.0, lower_disp_limit=-3.0)
+                   upper_disp_limit=3.0, lower_disp_limit=-3.0, precision=4, units='mm')
     y = pvproperty(value=0.0, name=':Y', read_only=True, mock_record='ai',
-                   upper_disp_limit=3.0, lower_disp_limit=-3.0)
+                   upper_disp_limit=3.0, lower_disp_limit=-3.0, precision=4, units='mm')
     tmit = pvproperty(value=0.0, name=':TMIT', read_only=True, mock_record='ai',
                    upper_disp_limit=1.0e10, lower_disp_limit=0)
-    z = pvproperty(value=0.0, name=':Z', read_only=True)
+    z = pvproperty(value=0.0, name=':Z', read_only=True, precision=2, units='m')
     
 class BPMService(simulacrum.Service):
     def __init__(self):
@@ -41,7 +42,7 @@ class BPMService(simulacrum.Service):
         # results might change.  Oh well, I can't figure out a better way to do it.
         L.info("Initializing with data from model service.")
         bpms = self.fetch_bpm_list()
-        orbit = np.zeros(len(bpms), dtype=[('element_name', 'U60'), ('device_name', 'U60'), ('x', 'float32'), ('y', 'float32'), ('tmit', 'float32'), ('z', 'float32')])
+        orbit = np.zeros(len(bpms), dtype=[('element_name', 'U60'), ('device_name', 'U60'), ('x', 'float32'), ('y', 'float32'), ('tmit', 'float32'), ('alive', 'bool'), ('z', 'float32')])
         for i, row in enumerate(bpms):
             (name, z) = row
             orbit['element_name'][i] = name
@@ -87,6 +88,7 @@ class BPMService(simulacrum.Service):
                 A = A.reshape(md['shape'])
                 self.orbit['x'] = A[0]
                 self.orbit['y'] = A[1]
+                self.orbit['alive'] = A[2] > 0
                 L.debug(self.orbit)
                 await self.publish_orbit()
             else: 
@@ -96,8 +98,12 @@ class BPMService(simulacrum.Service):
     async def publish_orbit(self):
         for row in self.orbit:
             if row['device_name']+":X" in self:
-                await self[row['device_name']+":X"].write(row['x'])
-                await self[row['device_name']+":Y"].write(row['y'])
+                if not row['alive']:
+                    severity = AlarmSeverity.INVALID_ALARM
+                else:
+                    severity = AlarmSeverity.NO_ALARM
+                await self[row['device_name']+":X"].write(row['x'], severity=severity)
+                await self[row['device_name']+":Y"].write(row['y'], severity=severity)
                 await self[row['device_name']+":TMIT"].write(row['tmit'])
     
 def main():
