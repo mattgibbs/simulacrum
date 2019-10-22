@@ -24,6 +24,7 @@ class ModelService:
         path_to_lattice = os.path.join(os.path.dirname(os.path.realpath(__file__)), "lcls.lat")
         path_to_init = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tao.init")
         self.tao.init("-noplot -lat {lat_path} -init {init_path}".format(lat_path=path_to_lattice, init_path=path_to_init))
+        self.tao.cmd("set global lattice_calc_on = F")
         self.ctx = Context.instance()
         self.model_broadcast_socket = zmq.Context().socket(zmq.PUB)
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
@@ -45,6 +46,7 @@ class ModelService:
         self.design_twiss_pv = SharedPV(nt=model_table, 
                            initial=initial_table,
                            loop=self.loop)
+        self.recalc_needed = False
         self.pva_needs_refresh = False
         self.need_zmq_broadcast = False
     
@@ -131,6 +133,10 @@ class ModelService:
         This loop broadcasts new orbits, twiss parameters, etc. over ZMQ.
         """
         while True:
+            if self.recalc_needed:
+                self.tao.cmd("set global lattice_calc_on = T")
+                self.tao.cmd("set global lattice_calc_on = F")
+                self.recalc_needed = False
             if self.need_zmq_broadcast:
                 self.send_orbit()
                 self.send_profiles_twiss()
@@ -140,6 +146,7 @@ class ModelService:
             await asyncio.sleep(0.1)
     
     def model_changed(self):
+        self.recalc_needed = True
         self.pva_needs_refresh = True
         self.need_zmq_broadcast = True
     
