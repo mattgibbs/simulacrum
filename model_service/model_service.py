@@ -260,7 +260,7 @@ class ModelService:
         while True:
             p = await s.recv_pyobj()
             msg = "Got a message: {}".format(p)
-            L.info(msg)
+            L.debug(msg)
             if p['cmd'] == 'tao':
                 try:
                     retval = self.tao_cmd(p['val'])
