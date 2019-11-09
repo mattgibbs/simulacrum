@@ -97,6 +97,7 @@ class ModelService:
         eta_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.eta")
         etap_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.etap")
         psi_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.phi")
+        rmat_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.mat6").reshape((-1, 6, 6))
         
         table_rows = []
         for i, element_id in enumerate(element_id_list):
@@ -105,10 +106,7 @@ class ModelService:
                 device_name = simulacrum.util.convert_element_to_device(element_name)
             except KeyError:
                 device_name = ""
-            rmat = _parse_tao_mat6(self.tao.cmd('python ele:mat6 1@0>>{index}|model mat6'.format(index=element_id)))
-            if rmat.shape != (6,6):
-                rmat = np.empty((6,6))
-                rmat.fill(np.nan)
+            rmat = rmat_list[i]
             table_rows.append({"element": element_name, "device_name": device_name, "s": s_list[i], "length": l_list[i], "p0c": p0c_list[i],
                                "alpha_x": alpha_x_list[i], "beta_x": beta_x_list[i], "eta_x": eta_x_list[i], "etap_x": etap_x_list[i], "psi_x": psi_x_list[i],
                                "alpha_y": alpha_y_list[i], "beta_y": beta_y_list[i], "eta_y": eta_y_list[i], "etap_y": etap_y_list[i], "psi_y": psi_y_list[i],
@@ -276,9 +274,6 @@ class ModelService:
 
 def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
-
-def _parse_tao_mat6(text):
-    return np.array([[float(num) for num in line.split(";")[3:]] for line in text])
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Simulacrum Model Service")
