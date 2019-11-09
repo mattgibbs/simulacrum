@@ -248,6 +248,12 @@ class ModelService:
             self.model_changed()
         return result
     
+    def tao_batch(self, cmds):
+        L.info("Starting command batch.")
+        results = [self.tao_cmd(cmd) for cmd in cmds]
+        L.info("Batch complete.")
+        return results
+    
     async def recv(self):
         s = self.ctx.socket(zmq.REP)
         s.bind("tcp://*:{}".format(os.environ.get('MODEL_PORT', "12312")))
@@ -275,6 +281,12 @@ class ModelService:
                 self.model_changed() #Sets the flag that will cause an und twiss broadcast
                 #self.send_und_twiss()
                 await s.send_pyobj({'status': 'ok'})
+            elif p['cmd'] == 'tao_batch':
+                try:
+                    results = self.tao_batch(p['val'])
+                    await s.send_pyobj({'status': 'ok', 'result': results})
+                except Exception as e:
+                    await s.send_pyobj({'status': 'fail', 'err': e})
 
 def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
