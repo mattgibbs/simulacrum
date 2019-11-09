@@ -82,6 +82,7 @@ class KlystronPV(PVGroup):
         self.pdes._data['value'] = initial_values[1]
         self.phas._data['value'] = initial_values[1]  
         self.bc1_tctl._data['value'] = 1
+        self.bc1_tstat._data['value'] = 1
         self.change_callback = change_callback 
 
     async def interlock_trip(self):
@@ -304,7 +305,7 @@ class KlystronPV(PVGroup):
     async def bc1_tctl(self, instance, value):
         self.has_accel_triggers = value in ("Activate", "Reactivate")
         await self.on_off_changed()
-        await self.bc1_tstat.publish(1 if self.has_accel_triggers else 0)
+        await self.bc1_tstat.write(1 if self.has_accel_triggers else 0)
         return value
     
     async def on_off_changed(self):
@@ -350,7 +351,12 @@ class KlystronService(simulacrum.Service):
         L.info(init_vals)
         self.add_pvs(klys_pvs)
         self.add_pvs(cud_pvs)
-        self.add_pvs(sbst_pvs)                                         
+        self.add_pvs(sbst_pvs)
+        stat_aliases = {}
+        for pv in self:
+            if pv.endswith(":BEAMCODE1_TSTAT"):
+                stat_aliases["{}:BEAMCODE1_STAT".format(pv[:-16])] = self[pv]
+        self.update(stat_aliases)
         L.info("Initialization complete.")
 
     def get_klystron_ACTs_from_model(self):
