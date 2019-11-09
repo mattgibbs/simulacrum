@@ -54,18 +54,22 @@ class ModelService:
     
     def start(self):
         L.info("Starting Model Service.")
-        pva_server = PVAServer(providers=[{"BMAD:SYS0:1:FULL_MACHINE:LIVE:TWISS": self.live_twiss_pv,
-                                           "BMAD:SYS0:1:FULL_MACHINE:DESIGN:TWISS": self.design_twiss_pv}])
-        zmq_task = self.loop.create_task(self.recv())
-        pva_refresh_task = self.loop.create_task(self.refresh_pva_table())
-        broadcast_task = self.loop.create_task(self.broadcast_model_changes())
+        pva_server = PVAServer(providers=[{"SIMULACRUM:SYS0:1:FULL_MACHINE:LIVE:TWISS": self.live_twiss_pv,
+                                           "SIMULACRUM:SYS0:1:FULL_MACHINE:DESIGN:TWISS": self.design_twiss_pv}])
         try:
-            self.loop.run_until_complete(zmq_task)
+            zmq_task = self.loop.create_task(self.recv())
+            pva_refresh_task = self.loop.create_task(self.refresh_pva_table())
+            broadcast_task = self.loop.create_task(self.broadcast_model_changes())
+            self.loop.run_forever()
         except KeyboardInterrupt:
+            L.info("Shutting down Model Service.")
             zmq_task.cancel()
             pva_refresh_task.cancel()
             broadcast_task.cancel()
             pva_server.stop()
+        finally:
+            self.loop.close()
+            L.info("Model Service shutdown complete.")
     
     def get_twiss_table(self):
         start_time = time.time()
@@ -140,14 +144,27 @@ class ModelService:
                 self.tao.cmd("set global lattice_calc_on = F")
                 self.recalc_needed = False
             if self.need_zmq_broadcast:
-                self.send_orbit()
-                self.send_profiles_twiss()
-                self.send_prof_orbit()
-                self.send_und_twiss()
+                try:
+                    self.send_orbit()
+                except Exception as e:
+                    L.warning("SEND ORBIT FAILED: %s", e)
+                try:
+                    self.send_profiles_twiss()
+                except Exception as e:
+                    L.warning("SEND PROFILES TWISS FAILED: %s", e)
+                try:
+                    self.send_prof_orbit()
+                except Exception as e:
+                    L.warning("SEND PROF ORBIT FAILED: %s", e)
+                try:
+                    self.send_und_twiss()
+                except Exception as e:
+                    L.warning("SEND UND TWISS FAILED: %s", e)
                 self.need_zmq_broadcast = False
             await asyncio.sleep(0.1)
     
     def model_changed(self):
+        #L.info("Model change flag set.")
         self.recalc_needed = True
         self.pva_needs_refresh = True
         self.need_zmq_broadcast = True
@@ -210,7 +227,6 @@ class ModelService:
         self.model_broadcast_socket.send(orb)
 
     def send_profiles_twiss(self):
-        L.info('Sending Profile');
         twiss_text = np.asarray(self.tao_cmd("show lat -at beta_a -at beta_b Instrument::OTR*,Instrument::YAG*"))
         metadata = {"tag" : "prof_twiss", "dtype": str(twiss_text.dtype), "shape": twiss_text.shape}
         self.model_broadcast_socket.send_pyobj(metadata, zmq.SNDMORE)
