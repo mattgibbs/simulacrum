@@ -82,7 +82,7 @@ class ModelService:
         element_id_list = element_id_list[1:last_element_index+1]
         s_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.s")
         l_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.l")
-        p0c_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.p0c")
+        p0c_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:orbit.energy")
         alpha_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.alpha")
         beta_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.beta")
         eta_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.eta")
