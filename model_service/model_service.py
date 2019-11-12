@@ -321,8 +321,8 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Simulacrum Model Service")
     parser.add_argument(
         'model_name',
-        help='Name of a Tao model from either lcls-lattice or lcls-classic-lattice.  Must be one of:\n' + 
-             'lcls_classic\n' + 'cu_hxr\n' + 'cu_spec\n' + 'cu_sxr\n' + 'sc_sxr\n' + 'sc_hxr\n'
+        help='Name of a Tao model from either lcls-lattice or lcls-classic-lattice.  Must be one of: ' + 
+             'lcls_classic, cu_hxr, cu_spec, cu_sxr, sc_sxr, or sc_hxr'
     )
     model_service_args = parser.parse_args()
     tao_init_file = find_model(model_service_args.model_name)
