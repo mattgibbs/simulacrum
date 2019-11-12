@@ -3,11 +3,11 @@ import os
 import argparse
 import sys
 import pickle
-import pytao
-import numpy as np
 import asyncio
-import zmq
 import time
+import numpy as np
+import zmq
+import pytao
 from p4p.nt import NTTable
 from p4p.server import Server as PVAServer
 from p4p.server.asyncio import SharedPV
@@ -20,7 +20,8 @@ model_service_dir = os.path.dirname(os.path.realpath(__file__))
 L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class ModelService:
-    def __init__(self, init_file):
+    def __init__(self, init_file, name):
+        self.name = name
         tao_lib = os.environ.get('TAO_LIB', '')
         self.tao = pytao.Tao(so_lib=tao_lib)
         L.debug("Initializing Tao...")
@@ -53,9 +54,9 @@ class ModelService:
         self.need_zmq_broadcast = False
     
     def start(self):
-        L.info("Starting Model Service.")
-        pva_server = PVAServer(providers=[{"SIMULACRUM:SYS0:1:FULL_MACHINE:LIVE:TWISS": self.live_twiss_pv,
-                                           "SIMULACRUM:SYS0:1:FULL_MACHINE:DESIGN:TWISS": self.design_twiss_pv}])
+        L.info("Starting %s Model Service.", self.name)
+        pva_server = PVAServer(providers=[{f"SIMULACRUM:SYS0:1:{self.name}:LIVE:TWISS": self.live_twiss_pv,
+                                           f"SIMULACRUM:SYS0:1:{self.name}:DESIGN:TWISS": self.design_twiss_pv}])
         try:
             zmq_task = self.loop.create_task(self.recv())
             pva_refresh_task = self.loop.create_task(self.refresh_pva_table())
@@ -291,13 +292,40 @@ class ModelService:
 def _orbit_array_from_text(text):
     return np.array([float(l.split()[5]) for l in text])*1000.0
 
+def find_model(model_name):
+    """
+    Helper routine to find models using standard environmental variables:
+    $LCLS_CLASSIC_LATTICE   should point to a checkout of https://github.com/slaclab/lcls-classic-lattice 
+    $LCLS_LATTICE  should point to a checkout of https://github.com/slaclab/lcls-lattice
+    
+    Availble models:
+        lcls_classic
+        cu_hxr
+        cu_spec
+        cu_sxr
+        sc_hxr
+        sc_sxr
+    
+    """
+    if model_name == 'lcls_classic':
+        tao_initfile = os.path.join(os.environ['LCLS_CLASSIC_LATTICE'], 'bmad/model/tao.init')
+    elif model_name in ['cu_hxr', 'cu_sxr', 'cu_spec', 'sc_sxr', 'sc_hxr']:
+        root = os.environ['LCLS_LATTICE']
+        tao_initfile = os.path.join(root, 'bmad/models/', model_name, 'tao.init')  
+    else:
+        raise ValueError('Not a valid model: {}'.format(model_name))
+    assert os.path.exists(tao_initfile), 'Error: file does not exist: ' + tao_initfile
+    return tao_initfile
+
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Simulacrum Model Service")
     parser.add_argument(
-        'tao_init_file',
-        help='A Tao .init file.  Make sure this .init file specifies a &tao_design_lattice to use.'
+        'model_name',
+        help='Name of a Tao model from either lcls-lattice or lcls-classic-lattice.  Must be one of:\n' + 
+             'lcls_classic\n' + 'cu_hxr\n' + 'cu_spec\n' + 'cu_sxr\n' + 'sc_sxr\n' + 'sc_hxr\n'
     )
     model_service_args = parser.parse_args()
-    serv = ModelService(init_file=model_service_args.tao_init_file)
+    tao_init_file = find_model(model_service_args.model_name)
+    serv = ModelService(init_file=tao_init_file, name=model_service_args.model_name.upper())
     serv.start()
 
