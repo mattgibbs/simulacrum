@@ -212,7 +212,7 @@ class MagnetService(simulacrum.Service):
         self.add_pvs(mag_pvs)
         # Now that we've set up all the magnets, we need to send the model a
         # command to use non-normalized magnetic field units.
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::* field_master = T"})
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::*,Sbend::* field_master = T"})
         self.cmd_socket.recv_pyobj()
         L.info("Initialization complete.")
     
