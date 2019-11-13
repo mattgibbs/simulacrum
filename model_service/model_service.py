@@ -32,22 +32,29 @@ class ModelService:
         self.model_broadcast_socket = zmq.Context().socket(zmq.PUB)
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         self.loop = asyncio.get_event_loop()
-        model_table = NTTable([("element", "s"), ("device_name", "s"),
+        twiss_table = NTTable([("element", "s"), ("device_name", "s"),
                                        ("s", "d"), ("length", "d"), ("p0c", "d"),
                                        ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"), ("psi_x", "d"),
-                                       ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d"), ("psi_y", "d"),
-                                       ("r11", "d"), ("r12", "d"), ("r13", "d"), ("r14", "d"), ("r15", "d"), ("r16", "d"),
-                                       ("r21", "d"), ("r22", "d"), ("r23", "d"), ("r24", "d"), ("r25", "d"), ("r26", "d"),
-                                       ("r31", "d"), ("r32", "d"), ("r33", "d"), ("r34", "d"), ("r35", "d"), ("r36", "d"),
-                                       ("r41", "d"), ("r42", "d"), ("r43", "d"), ("r44", "d"), ("r45", "d"), ("r46", "d"),
-                                       ("r51", "d"), ("r52", "d"), ("r53", "d"), ("r54", "d"), ("r55", "d"), ("r56", "d"),
-                                       ("r61", "d"), ("r62", "d"), ("r63", "d"), ("r64", "d"), ("r65", "d"), ("r66", "d")])
-        initial_table = self.get_twiss_table()
-        self.live_twiss_pv = SharedPV(nt=model_table, 
-                           initial=initial_table,
+                                       ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d"), ("psi_y", "d")])
+        rmat_table = NTTable([("element", "s"), ("device_name", "s"), ("s", "d"), ("length", "d"),
+                              ("r11", "d"), ("r12", "d"), ("r13", "d"), ("r14", "d"), ("r15", "d"), ("r16", "d"),
+                              ("r21", "d"), ("r22", "d"), ("r23", "d"), ("r24", "d"), ("r25", "d"), ("r26", "d"),
+                              ("r31", "d"), ("r32", "d"), ("r33", "d"), ("r34", "d"), ("r35", "d"), ("r36", "d"),
+                              ("r41", "d"), ("r42", "d"), ("r43", "d"), ("r44", "d"), ("r45", "d"), ("r46", "d"),
+                              ("r51", "d"), ("r52", "d"), ("r53", "d"), ("r54", "d"), ("r55", "d"), ("r56", "d"),
+                              ("r61", "d"), ("r62", "d"), ("r63", "d"), ("r64", "d"), ("r65", "d"), ("r66", "d")])
+        initial_twiss_table, initial_rmat_table = self.get_twiss_table()
+        self.live_twiss_pv = SharedPV(nt=twiss_table, 
+                           initial=initial_twiss_table,
                            loop=self.loop)
-        self.design_twiss_pv = SharedPV(nt=model_table, 
-                           initial=initial_table,
+        self.design_twiss_pv = SharedPV(nt=twiss_table, 
+                           initial=initial_twiss_table,
+                           loop=self.loop)
+        self.live_rmat_pv = SharedPV(nt=rmat_table, 
+                           initial=initial_rmat_table,
+                           loop=self.loop)
+        self.design_rmat_pv = SharedPV(nt=rmat_table, 
+                           initial=initial_rmat_table,
                            loop=self.loop)
         self.recalc_needed = False
         self.pva_needs_refresh = False
@@ -56,7 +63,9 @@ class ModelService:
     def start(self):
         L.info("Starting %s Model Service.", self.name)
         pva_server = PVAServer(providers=[{f"SIMULACRUM:SYS0:1:{self.name}:LIVE:TWISS": self.live_twiss_pv,
-                                           f"SIMULACRUM:SYS0:1:{self.name}:DESIGN:TWISS": self.design_twiss_pv}])
+                                           f"SIMULACRUM:SYS0:1:{self.name}:DESIGN:TWISS": self.design_twiss_pv,
+                                           f"SIMULACRUM:SYS0:1:{self.name}:LIVE:RMAT": self.live_rmat_pv,
+                                           f"SIMULACRUM:SYS0:1:{self.name}:DESIGN:RMAT": self.design_rmat_pv,}])
         try:
             zmq_task = self.loop.create_task(self.recv())
             pva_refresh_task = self.loop.create_task(self.refresh_pva_table())
@@ -73,6 +82,10 @@ class ModelService:
             L.info("Model Service shutdown complete.")
     
     def get_twiss_table(self):
+        """
+        Queries Tao for model and RMAT info.
+        Returns: A (twiss_table, rmat_table) tuple.
+        """
         start_time = time.time()
         #First we get a list of all the elements.
         element_list = self.tao_cmd("python lat_ele 1@0")
@@ -99,18 +112,23 @@ class ModelService:
         etap_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.etap")
         psi_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.phi")
         rmat_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.mat6").reshape((-1, 6, 6))
-        
-        table_rows = []
+        combined_rmat = np.identity(6)
+        twiss_table_rows = []
+        rmat_table_rows = []
         for i, element_id in enumerate(element_id_list):
             element_name = element_name_list[i]
             try:
                 device_name = simulacrum.util.convert_element_to_device(element_name)
             except KeyError:
                 device_name = ""
-            rmat = rmat_list[i]
-            table_rows.append({"element": element_name, "device_name": device_name, "s": s_list[i], "length": l_list[i], "p0c": p0c_list[i],
+            element_rmat = rmat_list[i]
+            rmat = np.matmul(element_rmat, combined_rmat)
+            combined_rmat = rmat
+            twiss_table_rows.append({"element": element_name, "device_name": device_name, "s": s_list[i], "length": l_list[i], "p0c": p0c_list[i],
                                "alpha_x": alpha_x_list[i], "beta_x": beta_x_list[i], "eta_x": eta_x_list[i], "etap_x": etap_x_list[i], "psi_x": psi_x_list[i],
-                               "alpha_y": alpha_y_list[i], "beta_y": beta_y_list[i], "eta_y": eta_y_list[i], "etap_y": etap_y_list[i], "psi_y": psi_y_list[i],
+                               "alpha_y": alpha_y_list[i], "beta_y": beta_y_list[i], "eta_y": eta_y_list[i], "etap_y": etap_y_list[i], "psi_y": psi_y_list[i]})
+            rmat_table_rows.append({
+                               "element": element_name, "device_name": device_name, "s": s_list[i], "length": l_list[i],
                                "r11": rmat[0,0], "r12": rmat[0,1], "r13": rmat[0,2], "r14": rmat[0,3], "r15": rmat[0,4], "r16": rmat[0,5],
                                "r21": rmat[1,0], "r22": rmat[1,1], "r23": rmat[1,2], "r24": rmat[1,3], "r25": rmat[1,4], "r26": rmat[1,5],
                                "r31": rmat[2,0], "r32": rmat[2,1], "r33": rmat[2,2], "r34": rmat[2,3], "r35": rmat[2,4], "r36": rmat[2,5],
@@ -119,17 +137,19 @@ class ModelService:
                                "r61": rmat[5,0], "r62": rmat[5,1], "r63": rmat[5,2], "r64": rmat[5,3], "r65": rmat[5,4], "r66": rmat[5,5]})
         end_time = time.time()
         L.debug("get_twiss_table took %f seconds", end_time - start_time)
-        return table_rows
+        return twiss_table_rows, rmat_table_rows
     
     async def refresh_pva_table(self):
         """
         This loop continuously checks if the PVAccess table needs to be refreshed,
-        and publishes a new table if it does.  The model_has_changed flag is
+        and publishes a new table if it does.  The pva_needs_refresh flag is
         usually set when a tao command beginning with 'set' occurs.
         """
         while True:
             if self.pva_needs_refresh:
-                self.live_twiss_pv.post(self.get_twiss_table())
+                twiss_table, rmat_table = self.get_twiss_table()
+                self.live_twiss_pv.post(twiss_table)
+                self.live_rmat_pv.post(rmat_table)
                 self.pva_needs_refresh = False
             await asyncio.sleep(1.0)
     
@@ -163,7 +183,6 @@ class ModelService:
             await asyncio.sleep(0.1)
     
     def model_changed(self):
-        #L.info("Model change flag set.")
         self.recalc_needed = True
         self.pva_needs_refresh = True
         self.need_zmq_broadcast = True
