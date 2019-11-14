@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import json
+import functools
 from collections import OrderedDict
 from caproto.server import ioc_arg_parser, run, pvproperty, PVGroup
 from caproto.server.records import _Limits
@@ -210,11 +211,94 @@ class MagnetService(simulacrum.Service):
                     for device_name in magnet_device_list
                     if device_name in init_vals}
         self.add_pvs(mag_pvs)
+        # Lets do some custom additions to handle bend magnets.
+        self.add_pvs(self.make_bx02_pv()) #BX02 is the power supply for the DL1 bend string
+        self.add_pvs(self.make_byd1_pv()) #BYD1 is the power supply for the BYD bend string
+        self.add_pvs(self.make_bx12_pv()) #BX12 is the power supply for the BC1 bend string
+        self.add_pvs(self.make_bx22_pv()) #BX22 is the power supply for the BC2 bend string
+        
         # Now that we've set up all the magnets, we need to send the model a
         # command to use non-normalized magnetic field units.
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::*,Sbend::* field_master = T"})
         self.cmd_socket.recv_pyobj()
         L.info("Initialization complete.")
+    
+    def make_bx02_pv(self):
+        bx02_name = "BEND:IN20:751"
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BX02*"})
+        _, _, _, _, l, b_init_tesla, g = self.cmd_socket.recv_pyobj()['result'][0].split()
+        # b_init_gevc = -1 * speed of light * b_init_tesla / (g * 10**9)
+        g = float(g)
+        b_init_tesla = float(b_init_tesla)
+        b_init_gevc = -1.0 * 2.99792458e8 * b_init_tesla / (g * 10**9)
+        print("BX02 init strength in GeV/c = ", b_init_gevc)
+        print("BX02 init strength in Tesla = ", b_init_tesla)
+        init_vals = {"length": float(l), "bact": b_init_gevc, "units": "GeV/c"} 
+        dl1_partial = functools.partial(self.on_dl1_change, b_init_tesla, g)
+        return {bx02_name: MagnetPV(bx02_name, simulacrum.util.convert_device_to_element(bx02_name), dl1_partial, length=float(l), initial_value=init_vals, prefix=bx02_name)}
+    
+    def make_byd1_pv(self):
+        byd1_name = "BEND:DMPH:400"
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BX31*"})
+        _, _, _, _, l, b_init_bx31_tesla, g_bx31 = self.cmd_socket.recv_pyobj()['result'][0].split()
+        g_bx31 = float(g_bx31)
+        b_init_bx31_tesla = float(b_init_bx31_tesla)
+        # b_init_gevc = -1 * speed of light * b_init_tesla / (g * 10**9)
+        b_init_bx31_gevc = -1.0 * 2.99792458e8 * b_init_bx31_tesla / (g_bx31 * 10**9)
+        init_vals = {"length": float(l), "bact": b_init_bx31_gevc, "units": "GeV/c"}
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BX35*"})
+        _, _, _, _, _, b_init_bx35_tesla, g_bx35 = self.cmd_socket.recv_pyobj()['result'][0].split()
+        g_bx35 = float(g_bx35)
+        b_init_bx35_tesla = float(b_init_bx35_tesla)
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BYD*"})
+        _, _, _, _, _, b_init_byd1_tesla, g_byd1 = self.cmd_socket.recv_pyobj()['result'][0].split()
+        g_byd1 = float(g_byd1)
+        b_init_byd1_tesla = float(b_init_byd1_tesla)
+        #def on_dl2_change(self, b_init_bx31, b_init_bx35, b_init_byd1, g_bx31, g_bx35, g_byd1, magnet_pv, value)
+        byd1_partial = functools.partial(self.on_dl2_change, b_init_bx31_tesla, b_init_bx35_tesla, b_init_byd1_tesla, g_bx31, g_bx35, g_byd1)
+        return {byd1_name: MagnetPV(byd1_name, simulacrum.util.convert_device_to_element(byd1_name), byd1_partial, length=float(l), initial_value=init_vals, prefix=byd1_name)}
+    
+    def make_bx12_pv(self):
+        bx12_name = "BEND:LI21:231"
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BX12*"})
+        _, _, _, _, l_bx12, b_init_bx12_tesla, g_bx12 = self.cmd_socket.recv_pyobj()['result'][0].split()
+        l_bx12 = float(l_bx12)
+        g_bx12 = float(g_bx12)
+        b_init_bx12_tesla = float(b_init_bx12_tesla)
+        # b_init_kgm = 10.0 * b_init_tesla * l
+        b_init_bx12_kgm = -10.0 * b_init_bx12_tesla * l_bx12
+        init_vals = {"length": l_bx12, "bact": b_init_bx12_kgm, "units": "kG-m"}
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BX11*"})
+        _, _, _, _, l_bx11, b_init_bx11_tesla, g_bx11 = self.cmd_socket.recv_pyobj()['result'][0].split()
+        l_bx11 = float(l_bx11)
+        g_bx11 = float(g_bx11)
+        b_init_bx11_tesla = float(b_init_bx11_tesla)
+        # b_init_kgm = 10.0 * b_init_tesla * l
+        b_init_bx11_kgm = -10.0 * b_init_bx11_tesla * l_bx11
+        #def on_bc2_change(self, b_init_bx11, b_init_bx12, g_bx11, g_bx12, value)
+        bx12_partial = functools.partial(self.on_bc1_change, b_init_bx11_tesla, b_init_bx12_tesla, l_bx11, l_bx12)
+        return {bx12_name: MagnetPV(bx12_name, simulacrum.util.convert_device_to_element(bx12_name), bx12_partial, length=float(l_bx12), initial_value=init_vals, prefix=bx12_name)}
+    
+    def make_bx22_pv(self):
+        bx22_name = "BEND:LI24:790"
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BX22*"})
+        _, _, _, _, l_bx22, b_init_bx22_tesla, g_bx22 = self.cmd_socket.recv_pyobj()['result'][0].split()
+        l_bx22 = float(l_bx22)
+        g_bx22 = float(g_bx22)
+        b_init_bx22_tesla = float(b_init_bx22_tesla)
+        # b_init_kgm = 10.0 * b_init_tesla * l
+        b_init_bx22_kgm = -10.0 * b_init_bx22_tesla * l_bx22
+        init_vals = {"length": l_bx22, "bact": b_init_bx22_kgm, "units": "kG-m"}
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute b_field -attribute g BX21*"})
+        _, _, _, _, l_bx21, b_init_bx21_tesla, g_bx21 = self.cmd_socket.recv_pyobj()['result'][0].split()
+        l_bx21 = float(l_bx21)
+        g_bx21 = float(g_bx21)
+        b_init_bx21_tesla = float(b_init_bx21_tesla)
+        # b_init_kgm = 10.0 * b_init_tesla * l
+        b_init_bx21_kgm = -10.0 * b_init_bx21_tesla * l_bx21
+        #def on_bc2_change(self, b_init_bx11, b_init_bx12, g_bx11, g_bx12, value)
+        bx22_partial = functools.partial(self.on_bc2_change, b_init_bx21_tesla, b_init_bx22_tesla, l_bx21, l_bx22)
+        return {bx22_name: MagnetPV(bx22_name, simulacrum.util.convert_device_to_element(bx22_name), bx22_partial, length=float(l_bx22), initial_value=init_vals, prefix=bx22_name)}
     
     def get_magnet_list_from_model(self):
         element_list = []
@@ -248,7 +332,50 @@ class MagnetService(simulacrum.Service):
             init_vals.update(parse_func(table['result']))
         return init_vals
         
+    def on_bc1_change(self, b_init_bx11, b_init_bx12, l_bx11, l_bx12, magnet_pv, value):
+        self.chicane_bend_change(b_init_bx11, l_bx11, "BX11*,BX14*", value)
+        self.chicane_bend_change(b_init_bx12, l_bx12, "BX12*,BX13*", -1.0 * value)
+    
+    def on_bc2_change(self, b_init_bx21, b_init_bx22, l_bx21, l_bx22, magnet_pv, value):
+        self.chicane_bend_change(b_init_bx21, l_bx21, "BX21*,BX24*", value)
+        self.chicane_bend_change(b_init_bx22, l_bx22, "BX22*,BX23*", -1.0 * value)
+    
+    def on_dl1_change(self, b_init, g, magnet_pv, value):
+        self.dl_bend_change(b_init, g, "BX02*,BX01*", value)
+    
+    def on_dl2_change(self, b_init_bx31, b_init_bx35, b_init_byd1, g_bx31, g_bx35, g_byd1, magnet_pv, value):
+        self.dl_bend_change(b_init_bx31, g_bx31, "BX31*,BX32*", value)
+        self.dl_bend_change(b_init_bx35, g_bx35, "BX35*,BX36*", value)
+        self.dl_bend_change(b_init_byd1, g_byd1, "BYD*", value)
+        
+    def chicane_bend_change(self, b_init, l, element_name, value):
+        L.debug(f"Changing {element_name} value to {value} kG*m")
+        L.debug(f"l = {l}")
+        L.debug(f"b_init = {b_init}")
+        b_field = value / (10.0 * l)
+        L.debug("New b_field in tesla:", b_field)
+        b_err = b_field - b_init
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": f"set ele {element_name} b_field_err = {b_err}"})
+        self.cmd_socket.recv_pyobj()
+        L.debug("%s bend strength changed to %s (T)", element_name, b_field)
+        
+    def dl_bend_change(self, b_init, g, element_name, value):
+        L.debug(f"Changing {element_name} value to {value} GeV/c")
+        L.debug(f"g = {g}")
+        L.debug(f"b_init = {b_init}")
+        # value is in GeV/c units for DL1.
+        # convert to Tesla:
+        b_field = -1.0 * value * 10**9 * g / 2.99792458e8
+        L.debug("New b_field in tesla:", b_field)
+        # Put the change into the b_err field.
+        # (You have to do this for bends, otherwise Tao changes the bend angle, which is not what you want)
+        b_err = b_field - b_init
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": f"set ele {element_name} b_field_err = {b_err}"})
+        self.cmd_socket.recv_pyobj()
+        L.debug("%s bend strength changed to %s (T)", element_name, b_field)
+
     def on_magnet_change(self, magnet_pv, value):
+        """ This method gets called any time a PV updates for XCORs, YCORs, or QUADs. """
         mag_type = magnet_pv.device_name.split(":")[0]
         mag_attr = self.attr_for_mag_type[mag_type]
         conv = self.conversion_to_BMAD_for_mag_type[mag_type]
@@ -258,7 +385,7 @@ class MagnetService(simulacrum.Service):
                                                                                                    attr=mag_attr,
                                                                                                    val=conv(value, l))})
         self.cmd_socket.recv_pyobj()
-        L.info('Updated {}.'.format(magnet_pv.device_name))
+        L.debug('Updated {}.'.format(magnet_pv.device_name))
        
 def main():
     service = MagnetService()
