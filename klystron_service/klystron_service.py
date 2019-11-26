@@ -48,6 +48,10 @@ class KlystronPV(PVGroup):
     ades = pvproperty(value=100.0, name=':ADES', precision=1)
     ampl = pvproperty(value=100.0, name=':AMPL', precision=1)
     bvjt = pvproperty(value=0.0, name=':BVJT')
+    alem = pvproperty(value=0.0, name=':ALEM')
+    plem = pvproperty(value=0.0, name=':PLEM')
+    eglem = pvproperty(value=0.0, name=':EGLEM')
+    chlem = pvproperty(value=0.0, name=':CHLEM')
     mkbvftpjasigma = pvproperty(value=0.0, name=':MKBVFTPJASIGMA')
     poly = pvproperty(value=np.zeros(6), name=':POLY', dtype=ChannelType.DOUBLE)
     # The seemingly random numbers in clear_* are the values these status
@@ -64,6 +68,7 @@ class KlystronPV(PVGroup):
                             enum_strings=("Deactivate", "Reactivate", "Activate"))
     bc1_tstat = pvproperty(value=0, name=':BEAMCODE1_TSTAT', dtype=ChannelType.ENUM,
                             enum_strings=("Deactivated", "Activated"), read_only=True)
+    bc1_stat =  pvproperty(value=0, name=':BEAMCODE1_STAT', read_only=True)
     trim = pvproperty(value=0, name=':TRIMPHAS', dtype=ChannelType.ENUM,
                       enum_strings=("Done", "TRIM"))
     mod_reset = pvproperty(value=0, name=':MOD:RESET', dtype=ChannelType.ENUM,
@@ -83,6 +88,7 @@ class KlystronPV(PVGroup):
         self.phas._data['value'] = initial_values[1]  
         self.bc1_tctl._data['value'] = 1
         self.bc1_tstat._data['value'] = 1
+        self.bc1_stat._data['value'] = 1
         self.change_callback = change_callback 
 
     async def interlock_trip(self):
@@ -306,6 +312,7 @@ class KlystronPV(PVGroup):
         self.has_accel_triggers = value in ("Activate", "Reactivate")
         await self.on_off_changed()
         await self.bc1_tstat.write(1 if self.has_accel_triggers else 0)
+        await self.bc1_stat.write(1 if self.has_accel_triggers else 0)
         return value
     
     async def on_off_changed(self):
@@ -352,11 +359,11 @@ class KlystronService(simulacrum.Service):
         self.add_pvs(klys_pvs)
         self.add_pvs(cud_pvs)
         self.add_pvs(sbst_pvs)
-        stat_aliases = {}
-        for pv in self:
-            if pv.endswith(":BEAMCODE1_TSTAT"):
-                stat_aliases["{}:BEAMCODE1_STAT".format(pv[:-16])] = self[pv]
-        self.update(stat_aliases)
+#        stat_aliases = {}
+#        for pv in self:
+#            if pv.endswith(":BEAMCODE1_TSTAT"):
+#                stat_aliases["{}:BEAMCODE1_STAT".format(pv[:-16])] = self[pv]
+#        self.update(stat_aliases)
         L.info("Initialization complete.")
 
     def get_klystron_ACTs_from_model(self):
