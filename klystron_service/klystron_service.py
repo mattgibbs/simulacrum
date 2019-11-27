@@ -42,12 +42,16 @@ class SubboosterPV(PVGroup):
         self.element_name = element_name
 
 class KlystronPV(PVGroup):
-    pdes = pvproperty(value=0.0, name=':PDES')  
-    phas = pvproperty(value=0.0, name=':PHAS', read_only=True)
+    pdes = pvproperty(value=0.0, name=':PDES', precision=1)  
+    phas = pvproperty(value=0.0, name=':PHAS', read_only=True, precision=1)
     enld = pvproperty(value=0.0, name=':ENLD')
-    ades = pvproperty(value=0.0, name=':ADES')
-    ampl = pvproperty(value=0.0, name=':AMPL')
+    ades = pvproperty(value=100.0, name=':ADES', precision=1)
+    ampl = pvproperty(value=100.0, name=':AMPL', precision=1)
     bvjt = pvproperty(value=0.0, name=':BVJT')
+    alem = pvproperty(value=0.0, name=':ALEM')
+    plem = pvproperty(value=0.0, name=':PLEM')
+    eglem = pvproperty(value=0.0, name=':EGLEM')
+    chlem = pvproperty(value=0.0, name=':CHLEM')
     mkbvftpjasigma = pvproperty(value=0.0, name=':MKBVFTPJASIGMA')
     poly = pvproperty(value=np.zeros(6), name=':POLY', dtype=ChannelType.DOUBLE)
     # The seemingly random numbers in clear_* are the values these status
@@ -64,6 +68,8 @@ class KlystronPV(PVGroup):
                             enum_strings=("Deactivate", "Reactivate", "Activate"))
     bc1_tstat = pvproperty(value=0, name=':BEAMCODE1_TSTAT', dtype=ChannelType.ENUM,
                             enum_strings=("Deactivated", "Activated"), read_only=True)
+    #BEAMCODE1_STAT represents the same data as BEAMCODE1_TSTAT, but does it as a float, not an enum.  2=off 1=on.
+    bc1_stat =  pvproperty(value=2, name=':BEAMCODE1_STAT', read_only=True)
     trim = pvproperty(value=0, name=':TRIMPHAS', dtype=ChannelType.ENUM,
                       enum_strings=("Done", "TRIM"))
     mod_reset = pvproperty(value=0, name=':MOD:RESET', dtype=ChannelType.ENUM,
@@ -82,6 +88,8 @@ class KlystronPV(PVGroup):
         self.pdes._data['value'] = initial_values[1]
         self.phas._data['value'] = initial_values[1]  
         self.bc1_tctl._data['value'] = 1
+        self.bc1_tstat._data['value'] = 1
+        self.bc1_stat._data['value'] = 1
         self.change_callback = change_callback 
 
     async def interlock_trip(self):
@@ -92,7 +100,8 @@ class KlystronPV(PVGroup):
         dsta2 = dsta2 & ~(1 << 3) #Turn off "Mod interlocks complete"
         dsta2 = dsta2 & ~(1 << 7) #Turn off "Mod HV on"
         self.dsta._data['value'] = [dsta1, dsta2]
-        await self.dsta.publish(0) 
+        await self.dsta.publish(0)
+        await self.mod_hv_ctrl.write('OFF') # Only for SimUI
         await self.on_off_changed()
     
     @mod_reset.putter
@@ -119,6 +128,7 @@ class KlystronPV(PVGroup):
             await self.mod_on()
         else:
             await self.mod_off()
+        
         return value
 
     async def mod_on(self):
@@ -133,7 +143,8 @@ class KlystronPV(PVGroup):
         await self.on_off_changed()
     
     async def mod_off(self, hv_ready=True):
-        if self.tripped or (not self.hv_ctrl_on):
+        #if self.tripped or (not self.hv_ctrl_on):
+        if not self.hv_ctrl_on:
             return
         dsta1, dsta2 = self.dsta.value
         dsta2 = dsta2 & ~(1 << 7) #Zero the "Mod HV On" bit
@@ -301,11 +312,16 @@ class KlystronPV(PVGroup):
     async def bc1_tctl(self, instance, value):
         self.has_accel_triggers = value in ("Activate", "Reactivate")
         await self.on_off_changed()
-        await self.bc1_tstat.publish(1 if self.has_accel_triggers else 0)
+        await self.bc1_tstat.write(1 if self.has_accel_triggers else 0)
+        await self.bc1_stat.write(1 if self.has_accel_triggers else 2)
         return value
     
     async def on_off_changed(self):
         is_on = self.has_accel_triggers and self.hv_ctrl_on and not self.tripped
+        if is_on:
+            await self.ampl.write(100.0)
+        else:
+            await self.ampl.write(0.0)
         self.change_callback(self, is_on, "IS_ON")
 
 def _parse_klys_table(table):
@@ -343,7 +359,7 @@ class KlystronService(simulacrum.Service):
         L.info(init_vals)
         self.add_pvs(klys_pvs)
         self.add_pvs(cud_pvs)
-        self.add_pvs(sbst_pvs)                                         
+        self.add_pvs(sbst_pvs)
         L.info("Initialization complete.")
 
     def get_klystron_ACTs_from_model(self):

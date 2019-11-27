@@ -1,20 +1,20 @@
 import sys
 import logging
 from os import path
+import csv
 ele2dev = {}
 dev2ele = {}
 element_names = []
 device_names = []
-path_to_lines = path.join(path.dirname(path.realpath(__file__)), "LCLS_lines.dat")
-
+path_to_lines = path.join(path.dirname(path.realpath(__file__)), "lcls_elements.csv")
 
 with open(path_to_lines, 'r') as f:
-    for line in f:
-        d = line.split()
-        element_names.append(d[1])
-        device_names.append(d[0])
-        ele2dev[d[1]] = d[0]
-        dev2ele[d[0]] = d[1]
+    reader = csv.reader(f, delimiter=',', quotechar='"')
+    for row in reader:
+        element_names.append(row[0])
+        device_names.append(row[1])
+        ele2dev[row[0]] = row[1]
+        dev2ele[row[1]] = row[0]
 
 def convert_element_to_device(element_name):
     return ele2dev[element_name]

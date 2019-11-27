@@ -53,16 +53,16 @@ class StopperPV(PVGroup):
 # 'left' and 'right' jaw nomenclature used for all stoppers; vertical stoppers 'left'==bottom, 'right'==top; 'left' jaw takes on negative values, 'right' jaw - positive
 class CollimatorPV(PVGroup):
 
-    setgap = pvproperty(value=0.0, name=':SETGAP')
-    getgap = pvproperty(value=0.0, name=':GETGAP', read_only=True)
-    setcenter = pvproperty(value=0.0, name=':SETCENTER')
+    setgap = pvproperty(value=0.0, name=':SETGAP', units="mm", precision=2)
+    getgap = pvproperty(value=0.0, name=':GETGAP', read_only=True, units="mm", precision=2)
+    setcenter = pvproperty(value=0.0, name=':SETCENTER', units="mm", precision=2)
     getcenter = pvproperty(value=0.0, name=':GETCENTER', read_only=True)
     
-    setleft = pvproperty(value=0.0, name=':SETLEFT')
-    getleft = pvproperty(value=0.0, name=':GETLEFT', read_only=True)
+    setleft = pvproperty(value=0.0, name=':SETLEFT', units="mm", precision=2)
+    getleft = pvproperty(value=0.0, name=':GETLEFT', read_only=True, units="mm", precision=2)
     
-    setright = pvproperty(value=0.0, name=':SETRIGHT')
-    getright = pvproperty(value=0.0, name=':GETRIGHT', read_only=True)
+    setright = pvproperty(value=0.0, name=':SETRIGHT', units="mm", precision=2)
+    getright = pvproperty(value=0.0, name=':GETRIGHT', read_only=True, units="mm", precision=2)
 
     @staticmethod
     def calc_coll(left, right):
@@ -138,16 +138,19 @@ class CollimatorPV(PVGroup):
         c_diff = ioc.getcenter.value - value
         #write value to getgap
         await ioc.getcenter.write(value)
-        #set new left jaw 
-        self.setleft._data['value']  = ioc.getleft.value - c_diff 
-        self.getleft._data['value']  = self.setleft._data['value'] 
+        #set new left jaw
+        self.setleft._data['value']  = ioc.getleft.value - c_diff
+        self.getleft._data['value']  = self.setleft._data['value']
         #set new right jaw
-        self.setright._data['value']  = ioc.getright.value - c_diff 
+        self.setright._data['value']  = ioc.getright.value - c_diff
         self.getright._data['value']  = self.setright._data['value']
+        #broadcast left/right jaw changes
+        await asyncio.gather(self.getleft.publish(0), self.getright.publish(0))
+        
         #update model
         val = [ioc.getleft.value, ioc.getright.value]
         self.change_callback(self, val)
-        return value 
+        return value
 
 
     @setgap.putter
@@ -159,9 +162,10 @@ class CollimatorPV(PVGroup):
         self.getleft._data['value'] = self.setleft._data['value']
         self.setright._data['value'] = ioc.getright.value - (g_diff/2)
         self.getright._data['value'] = self.setright._data['value']
+        await asyncio.gather(self.getleft.publish(0), self.getright.publish(0))
         val = [ioc.getleft.value, ioc.getright.value]
         self.change_callback(self, val)
-        return value 
+        return value
 
 
 #----------------------------------------PROFILE MONITORS--------------------------------------------#
@@ -190,7 +194,7 @@ class ObstructorService(simulacrum.Service):
     def __init__(self):
         super().__init__()
         #name converters 
-        self.stopper_names = {'TD11':'DUMP:LI21:305', 'TDUND':'DUMP:LTU1:970'} 
+        self.stopper_names = {'TD11':'DUMP:LI21:305', 'TDUND':'DUMP:LTUH:970'} 
         self.screen_names =  {'YAG02':'YAGS:IN20:241'}
         self.x_collimator_names = {'CE11': 'COLL:LI21:235'}
         self.y_collimator_names = {}

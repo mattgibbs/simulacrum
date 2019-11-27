@@ -2,6 +2,8 @@ import os
 import sys
 import asyncio
 import json
+import functools
+import math
 from collections import OrderedDict
 from caproto.server import ioc_arg_parser, run, pvproperty, PVGroup
 from caproto.server.records import _Limits
@@ -19,6 +21,11 @@ class MagnetPV(PVGroup):
     bact = pvproperty(value=0.0, name=':BACT', read_only=True)
     bmin = pvproperty(value=0.0, name=':BMIN', read_only=True)
     bmax = pvproperty(value=0.0, name=':BMAX', read_only=True)
+    blem = pvproperty(value=0.0, name=':BLEM')
+    eact = pvproperty(value=0.0, name=':EACT')
+    edes = pvproperty(value=0.0, name=':EDES')
+    bdes_save = pvproperty(value=0.0, name=':BDESSAVE')
+    edes_save = pvproperty(value=0.0, name=':EDESSAVE')
     ctrl_strings = ("Ready", "TRIM", "PERTURB", "BCON_TO_BDES", "SAVE_BDES",
                     "LOAD_BDES", "UNDO_BDES", "DAC_ZERO", "CALB", "STDZ",
                     "RESET", "TURN_ON", "TURN_OFF")                
@@ -40,11 +47,12 @@ class MagnetPV(PVGroup):
     bctrlegu = pvproperty(name=":BCTRL.EGU", read_only=True, dtype=ChannelType.STRING)
     bconegu = pvproperty(name=":BCON.EGU", read_only=True, dtype=ChannelType.STRING)
     
-    def __init__(self, device_name, element_name, change_callback, length, initial_value, *args, **kwargs):
+    def __init__(self, device_name, element_name, change_callback, length, initial_value, read_only=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device_name = device_name
         self.element_name = element_name
         self.length = length
+        self.read_only = read_only
         self.saved_bdes = None
         self.bdes_for_undo = None
         self.madname._data['value'] = element_name
@@ -52,6 +60,8 @@ class MagnetPV(PVGroup):
         self.bdes._data['value'] = float(initial_value['bact'])
         self.bact._data['value'] = float(initial_value['bact'])
         self.bctrl._data['value'] = float(initial_value['bact'])
+        if not read_only:
+            self.change_callback = change_callback
         if 'precision' in initial_value:
             prec = int(initial_value['precision'])
             self.bcon._data['precision'] = prec
@@ -86,18 +96,22 @@ class MagnetPV(PVGroup):
             self.bctrl._data['lower_ctrl_limit'] = lopr
             self.bctrl._data['lower_disp_limit'] = lopr
             self.bmin._data['value'] = lopr
-        self.change_callback = change_callback
         
     @ctrl.putter
     async def ctrl(self, instance, value):
+        if self.read_only:
+            L.info("Ignoring write to read-only magnet: %s", self.device_name)
+            return 0
         ioc = instance.group
         if value == "PERTURB":
             await ioc.bact.write(ioc.bdes.value)
-            self.change_callback(self, ioc.bact.value)
+            if self.change_callback:
+                await self.change_callback(self, ioc.bact.value)
         elif value == "TRIM":
             await asyncio.sleep(0.2)
             await ioc.bact.write(ioc.bdes.value)
-            self.change_callback(self, ioc.bact.value)
+            if self.change_callback:
+                await self.change_callback(self, ioc.bact.value)
         elif value == "BCON_TO_BDES":
             await ioc.bdes.write(ioc.bcon.value)
         elif value == "SAVE_BDES":
@@ -123,6 +137,8 @@ class MagnetPV(PVGroup):
     
     @bctrl.putter
     async def bctrl(self, instance, value):
+        if self.read_only:
+            return
         ioc = instance.group
         instance._data['value'] = value
         await ioc.bdes.write(value)
@@ -134,15 +150,24 @@ class MagnetPV(PVGroup):
         ioc = instance.group
         bctrl_val = self.bctrl._data['value']
         if bctrl_val != value:
-            print("bctrl = {}, value = {}".format(bctrl_val, value))
+            L.debug("bctrl = {}, value = {}".format(bctrl_val, value))
             self.bctrl._data['value'] = value
             await self.bctrl.publish(0)
         return value
     
     @bdes.putter
     async def bdes(self, instance, value):
+        if self.read_only:
+            return
         ioc = instance.group
         self.bdes_for_undo = ioc.bdes.value
+        return value
+    
+    @bact.putter
+    async def bact(self, instance, value):
+        ioc = instance.group
+        self.bctrl._data['value'] = value
+        await self.bctrl.publish(0)
         return value
 
 def _parse_corr_table(table):
@@ -197,16 +222,27 @@ class MagnetService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         init_vals = self.get_initial_values()
+        magnet_element_list = self.get_magnet_list_from_model()
+        magnet_device_list = [simulacrum.util.convert_element_to_device(element) for element in magnet_element_list]
         mag_pvs = {device_name: MagnetPV(device_name, simulacrum.util.convert_device_to_element(device_name), self.on_magnet_change, length=init_vals[device_name]['length'], initial_value=init_vals[device_name], prefix=device_name) 
-                    for device_name in simulacrum.util.device_names 
-                    if device_name.startswith("XCOR") or device_name.startswith("YCOR") or device_name.startswith("QUAD") or device_name.startswith("BEND")}
+                    for device_name in magnet_device_list
+                    if device_name in init_vals}
         self.add_pvs(mag_pvs)
+        # Lets do some custom additions to handle bend magnets.
+        self.add_pvs(self.make_bends())
+        
         # Now that we've set up all the magnets, we need to send the model a
         # command to use non-normalized magnetic field units.
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::* field_master = T"})
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele Kicker::*,Quadrupole::*,Sbend::* field_master = T"})
         self.cmd_socket.recv_pyobj()
-        
         L.info("Initialization complete.")
+        
+    def get_magnet_list_from_model(self):
+        element_list = []
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele -no_slaves Kicker::*,Quadrupole::*"})
+        for row in self.cmd_socket.recv_pyobj()['result'][:-1]:
+            element_list.append(row.split(None, 3)[1])
+        return element_list
     
     def get_initial_values(self):
         init_vals = self.get_magnet_BACTs_from_model()
@@ -214,10 +250,13 @@ class MagnetService(simulacrum.Service):
         with open(path_to_limits_file) as f:
             limits = json.load(f)
             for device_name in init_vals:
-                init_vals[device_name]["units"] = limits[device_name]["EGU"]
-                init_vals[device_name]["precision"] = limits[device_name]["PREC"]
-                init_vals[device_name]["upper_ctrl_limit"] = limits[device_name]["HOPR"]
-                init_vals[device_name]["lower_ctrl_limit"] = limits[device_name]["LOPR"]
+                try:
+                    init_vals[device_name]["units"] = limits[device_name]["EGU"]
+                    init_vals[device_name]["precision"] = limits[device_name]["PREC"]
+                    init_vals[device_name]["upper_ctrl_limit"] = limits[device_name]["HOPR"]
+                    init_vals[device_name]["lower_ctrl_limit"] = limits[device_name]["LOPR"]
+                except KeyError:
+                    pass
         return init_vals
     
     def get_magnet_BACTs_from_model(self):
@@ -227,19 +266,251 @@ class MagnetService(simulacrum.Service):
             table = self.cmd_socket.recv_pyobj()
             init_vals.update(parse_func(table['result']))
         return init_vals
-        
-    def on_magnet_change(self, magnet_pv, value):
+
+    async def on_magnet_change(self, magnet_pv, value):
+        """ This method gets called any time a PV updates for XCORs, YCORs, or QUADs. """
         mag_type = magnet_pv.device_name.split(":")[0]
         mag_attr = self.attr_for_mag_type[mag_type]
         conv = self.conversion_to_BMAD_for_mag_type[mag_type]
         l = magnet_pv.length
-        L.info('Updating {}... '.format( magnet_pv.device_name ) )
+        L.debug('Updating {}... '.format(magnet_pv.device_name))
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} {attr} = {val}".format(element=magnet_pv.element_name, 
                                                                                                    attr=mag_attr,
                                                                                                    val=conv(value, l))})
         self.cmd_socket.recv_pyobj()
-        L.info('Updated {}.'.format(magnet_pv.device_name))
-       
+        L.debug('Updated {}.'.format(magnet_pv.device_name))
+
+    def make_bends(self):
+        """ Make PVs for all the bends.  This is a lengthy procedure due to the
+        ridiculous complexity of how these are defined: bends are usually strings,
+        different types of bends work differently, naming conventions aren't
+        consistent, etc etc."""
+        # We treat chicane bends differently than the rest of the bends - they use kG*m units, rather than GeV/c
+        # Tao has no way to tell the two apart, so we have to do it ourselves.  Yuck.
+        # NOTE: These lists only include cu_hxr and cu_sxr devices right now.
+        chicane_bends = ("BXH", "BX1", "BX2", "BCX31", "BCX32", "BCX35", "BCX36", "BCXHS", "BCXXL", "BCXSS")
+        dl_bends = ("BXG", "BX0", "BYCUS", "BRCUSDC", "BLRCUS", "BKRCUS", "BRCUS1", "BY1", "BY2", "BX3", "BYDSH", "BYDSS", "BYD")
+        # Get a list of all bends, and the attributes we need to use them.
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute g -attribute b_field -attribute b_field_err SBend::*"})
+        result = self.cmd_socket.recv_pyobj()
+        # Parse this list, make all the conversion factors, and create the magnet PVs for the bends.
+        bend_elements = []
+        for line in result['result']:
+            s = line.split()
+            element_name = s[1]
+            l = float(s[4]) # Length of the magnet (in meters)
+            g = float(s[5]) # g = 1/rho, where rho is bend radius.  g has units of 1/meter
+            b_init_tesla = float(s[6]) # The "design" magnetic field for the magnet, in tesla.
+            b_field_err_init = float(s[7]) # The "field error" for this magnet, in tesla.
+            # Make a 'BendElement', which is usually half of a bend, for every item in this list.
+            bend_type = None
+            if any([element_name.startswith(chicane_prefix) for chicane_prefix in chicane_bends]):
+                L.debug("{} is in a chicane".format(element_name))
+                bend_type = "chicane"
+            elif any([element_name.startswith(bend_prefix) for bend_prefix in dl_bends]):
+                L.debug("{} is in a bend".format(element_name))
+                bend_type = "dogleg"
+            else:
+                L.warning("Found an un-handled bend magnet: {}.  Ignoring it, not creating PVs.".format(element_name))
+            if bend_type:
+                bend_elements.append(BendElement(element_name, l, g, b_init_tesla, b_field_err_init, bend_type))
+            
+        #Group the elements by bend.
+        elements_grouped_by_bend = {}
+        for element in bend_elements:
+            # If the last element is A, B, 1, or 2, assume this element is part of a 'split' bend, otherwise assume there is only one element in the bend.
+            bend_name = element.name[:-1] if element.name[-1] in ("A", "B", "1", "2") else element.name
+            if bend_name not in elements_grouped_by_bend:
+                elements_grouped_by_bend[bend_name] = [element]
+            else:
+                elements_grouped_by_bend[bend_name].append(element)
+        
+        # Make Bend objects for each bend we've found.
+        bends = []       
+        for bend_name in elements_grouped_by_bend:
+            elements = elements_grouped_by_bend[bend_name]
+            L.debug("elements in {}: {}".format(bend_name, [e.name for e in elements]))
+            bend_type = elements[0].bend_type
+            bends.append(Bend(bend_name, elements, bend_type))
+            
+        # Group the bends by string.
+        bends_grouped_by_string = {}
+        for bend in bends:
+            string_name = bend.element_name[:-1]
+            if string_name.startswith("BX3"):
+                # BX3 string is in series with the BYD string, use that one instead.
+                string_name = "BYD" + string_name[3:]
+            if string_name not in bends_grouped_by_string:
+                bends_grouped_by_string[string_name] = [bend]
+            else:
+                bends_grouped_by_string[string_name].append(bend)
+        
+        # Make BendString objects for each string we've found.
+        bend_strings = []
+        for string_name in bends_grouped_by_string:
+            bends_for_string = bends_grouped_by_string[string_name]
+            # Determine the 'master' bend.
+            if bends_for_string[0].bend_type == "chicane":
+                # For chicanes, this is easy: its always the second bend.
+                bends_ending_in_2 = [bend for bend in bends_for_string if bend.element_name.endswith("2")]
+                if len(bends_ending_in_2) != 1:
+                    raise Exception("Lattice consistency problem with string {}: multiple bends in chicane end in 2: {}".format(string_name, [b.element_name for b in bends_ending_in_2]))
+                master_bend = bends_ending_in_2[0]
+            if bends_for_string[0].bend_type == "dogleg":
+                # For dogleg bends, its less clear-cut.
+                if string_name.startswith("BYD") and not string_name.startswith("BYDS"):
+                    L.debug("Bends in BYD string: %s", repr([b.element_name for b in bends_for_string]))
+                    # BYD string master is BYD1.
+                    byd_1_bend = [bend for bend in bends_for_string if bend.element_name.startswith("BYD1")]
+                    if len(byd_1_bend) != 1:
+                        raise Exception("Lattice consistency problem: multiple BYD1 bends found: {}".format(byd_1_bend))
+                    master_bend = byd_1_bend[0]
+                elif string_name in ("BRCUS", "BYDS", "BYDS"):
+                    if len(bends_for_string) != 1:
+                        raise Exception("Lattice consistency problem: Multiple bends in {} found: {}".format(string_name, bends_for_string))
+                    master_bend = bends_for_string[0]
+                else:
+                    #If not BYD or BRCUS, we also use the second-magnet rule.
+                    bends_ending_in_2 = [bend for bend in bends_for_string if bend.element_name.endswith("2")]
+                    if len(bends_ending_in_2) != 1:
+                        raise Exception("Lattice consistency problem with string {}: multiple bends in dogleg end in 2: {}".format(string_name, [b.element_name for b in bends_ending_in_2]))
+                    master_bend = bends_ending_in_2[0]
+            L.debug("Making a string for {}.  Bend list: {}.  Master: {}".format(string_name, [bend.element_name for bend in bends_for_string], master_bend.element_name))
+            bend_strings.append(BendString(bends_for_string, master_bend, self.cmd_socket))
+        
+        # Make all the PV objects.
+        path_to_limits_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "magnet_limits.json")
+        with open(path_to_limits_file) as f:
+            limits = json.load(f)
+            pvs = {}
+            for string in bend_strings:
+                pvs.update({bend_pv.device_name: bend_pv for bend_pv in string.make_pvs(limits)})
+            return pvs
+
+class BendElement:
+    """ Represents one 'element' in a bend magnet.  This class exists
+        because each bend magnet is represented as two elements in the lattice. """
+    def __init__(self, name, l, g, b_init_tesla, b_field_err_init, bend_type):
+        self.name = name
+        self.l = l
+        self.g = g
+        self.b_init_tesla = b_init_tesla
+        self.b_field_err_init = b_field_err_init
+        self.bend_type = bend_type
+        assert bend_type in ("chicane", "dogleg")
+        if bend_type == "chicane":
+            self.unit = "kG*m"
+        elif bend_type == "dogleg":
+            self.unit = "GeV/c"
+        
+    def convert_to_b_field_err(self, b_field):
+        if self.bend_type == "chicane":
+            # b_field is in kG, convert to Tesla.
+            field_units = "kG"
+            b_field_tesla = -1.0 * math.copysign(1, self.g) * b_field / 10.0
+        elif self.bend_type == "dogleg":
+            # b_field is in GeV/c, convert to Tesla.
+            field_units = "GeV/c"
+            b_field_tesla = ((-1.0 * 10**9 * b_field * self.g)/2.99792458e8)
+        b_field_error =  b_field_tesla - self.b_init_tesla
+        L.debug("%s: Converted %f %s to %f T.  b_init = %f, b_err = %f", self.name, b_field, field_units, b_field_tesla, self.b_init_tesla, b_field_error)
+        return b_field_error
+
+class Bend:
+    """ Represents one bend magnet.  Usually these are part of a string.
+        One MagnetPV object is created for each bend magnet. """
+    def __init__(self, name, elements, bend_type):
+        self.element_name = name
+        self.device_name = simulacrum.util.convert_element_to_device(self.element_name)
+        self.elements = elements
+        self.l = sum([element.l for element in self.elements])
+        self.g = sum([element.g for element in self.elements])/len(self.elements)
+        self.b_init_tesla = sum([element.b_init_tesla for element in self.elements])/len(self.elements)
+        self.bend_type = bend_type
+        self.pv = None
+        assert bend_type in ("chicane", "dogleg")
+        if bend_type == "chicane":
+            self.unit = "kG*m"
+        elif bend_type == "dogleg":
+            self.unit = "GeV/c"
+    
+    def set_field_strength_commands(self, b_field):
+        commands = []
+        for element in self.elements:
+            if self.bend_type == "chicane":
+                b_err = element.convert_to_b_field_err(b_field/self.l)
+            elif self.bend_type == "dogleg":
+                b_err = element.convert_to_b_field_err(b_field)
+            command = f"set ele {element.name} b_field_err = {b_err}"
+            commands.append(command)
+        return commands
+    
+    def convert_tesla_to_epics_units(self, b_field_tesla):
+        if self.bend_type == "chicane":
+            b_field_kgm = -10.0 * math.copysign(1, self.g) * b_field_tesla * self.l
+        elif self.bend_type == "dogleg":
+            b_field_kgm = -1.0 * 2.99792458e8 * b_field_tesla / (self.g * 10**9)
+        L.debug("%s: Converted %f T to %f kGm.  Length is %f", self.element_name, b_field_tesla, b_field_kgm, self.l)
+        return b_field_kgm
+    
+    def make_pv(self, read_only, precision=None, upper_ctrl_limit=None, lower_ctrl_limit=None, change_callback=None):
+        init_vals = {"bact": self.convert_tesla_to_epics_units(self.b_init_tesla), "units": self.unit}
+        if precision:
+            init_vals["precision"] = precision
+        if upper_ctrl_limit:
+            init_vals["upper_ctrl_limit"] = upper_ctrl_limit
+        if lower_ctrl_limit:
+            init_vals["lower_ctrl_limit"] = lower_ctrl_limit
+        L.debug("%s: Making PV.  Init Vals: %s", self.element_name, repr(init_vals))
+        self.pv = MagnetPV(self.device_name, self.element_name, change_callback, length=self.l, initial_value=init_vals, read_only=read_only, prefix=self.device_name)
+        return self.pv
+        
+class BendString:
+    """ Represents a whole string of bends.  This class is responsible for
+        setting magnet strengths in the model. """
+    def __init__(self, bends, master, cmd_socket):
+        self.bends = bends
+        self.master_bend = master
+        self.cmd_socket = cmd_socket
+    
+    def send_field_strength_to_model(self, b_field_from_epics):
+        commands = []
+        for bend in self.bends:
+            sub_commands = bend.set_field_strength_commands(b_field_from_epics)
+            commands.extend(sub_commands)
+        L.debug("Sending batch to model: {}".format(commands))
+        self.cmd_socket.send_pyobj({"cmd": "tao_batch", "val": commands})
+        return self.cmd_socket.recv_pyobj()
+    
+    def make_pvs(self, limit_vals):
+        for bend in self.bends:
+            if bend != self.master_bend:
+                read_only = True
+                bend.make_pv(read_only, limit_vals[bend.device_name]['PREC'] if bend.device_name in limit_vals else None, 
+                             limit_vals[bend.device_name]['HOPR'] if bend.device_name in limit_vals else None,
+                             limit_vals[bend.device_name]['LOPR'] if bend.device_name in limit_vals else None)
+        # Now make the master bend PV        
+        async def change_callback(magnet_pv, value):
+            L.debug("Changing bend strength to %f", value)
+            self.send_field_strength_to_model(value)
+            for bend in self.bends:
+                if bend != self.master_bend:
+                    # Update all the non-master bend PVs, without triggering their callbacks.
+                    bend.pv.bctrl._data['value'] = value
+                    await bend.pv.bctrl.publish(0)
+                    bend.pv.bdes._data['value'] = value
+                    await bend.pv.bdes.publish(0)
+                    bend.pv.bact._data['value'] = value
+                    await bend.pv.bact.publish(0)
+                
+        read_only = False 
+        self.master_bend.make_pv(read_only, limit_vals[bend.device_name]['PREC'] if bend.device_name in limit_vals else None, 
+                                           limit_vals[bend.device_name]['HOPR'] if bend.device_name in limit_vals else None,
+                                           limit_vals[bend.device_name]['LOPR'] if bend.device_name in limit_vals else None,
+                                           change_callback)
+                
+        return [bend.pv for bend in self.bends]
+
 def main():
     service = MagnetService()
     loop = asyncio.get_event_loop()
