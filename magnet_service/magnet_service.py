@@ -41,11 +41,12 @@ class MagnetPV(PVGroup):
     bctrlegu = pvproperty(name=":BCTRL.EGU", read_only=True, dtype=ChannelType.STRING)
     bconegu = pvproperty(name=":BCON.EGU", read_only=True, dtype=ChannelType.STRING)
     
-    def __init__(self, device_name, element_name, change_callback, length, initial_value, *args, **kwargs):
+    def __init__(self, device_name, element_name, change_callback, length, initial_value, read_only=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device_name = device_name
         self.element_name = element_name
         self.length = length
+        self.read_only = read_only
         self.saved_bdes = None
         self.bdes_for_undo = None
         self.madname._data['value'] = element_name
@@ -53,6 +54,8 @@ class MagnetPV(PVGroup):
         self.bdes._data['value'] = float(initial_value['bact'])
         self.bact._data['value'] = float(initial_value['bact'])
         self.bctrl._data['value'] = float(initial_value['bact'])
+        if not read_only:
+            self.change_callback = change_callback
         if 'precision' in initial_value:
             prec = int(initial_value['precision'])
             self.bcon._data['precision'] = prec
@@ -87,18 +90,22 @@ class MagnetPV(PVGroup):
             self.bctrl._data['lower_ctrl_limit'] = lopr
             self.bctrl._data['lower_disp_limit'] = lopr
             self.bmin._data['value'] = lopr
-        self.change_callback = change_callback
         
     @ctrl.putter
     async def ctrl(self, instance, value):
+        if self.read_only:
+            L.info("Ignoring write to read-only magnet: %s", self.device_name)
+            return 0
         ioc = instance.group
         if value == "PERTURB":
             await ioc.bact.write(ioc.bdes.value)
-            self.change_callback(self, ioc.bact.value)
+            if self.change_callback:
+                await self.change_callback(self, ioc.bact.value)
         elif value == "TRIM":
             await asyncio.sleep(0.2)
             await ioc.bact.write(ioc.bdes.value)
-            self.change_callback(self, ioc.bact.value)
+            if self.change_callback:
+                await self.change_callback(self, ioc.bact.value)
         elif value == "BCON_TO_BDES":
             await ioc.bdes.write(ioc.bcon.value)
         elif value == "SAVE_BDES":
@@ -124,6 +131,8 @@ class MagnetPV(PVGroup):
     
     @bctrl.putter
     async def bctrl(self, instance, value):
+        if self.read_only:
+            return
         ioc = instance.group
         instance._data['value'] = value
         await ioc.bdes.write(value)
@@ -135,13 +144,15 @@ class MagnetPV(PVGroup):
         ioc = instance.group
         bctrl_val = self.bctrl._data['value']
         if bctrl_val != value:
-            print("bctrl = {}, value = {}".format(bctrl_val, value))
+            L.debug("bctrl = {}, value = {}".format(bctrl_val, value))
             self.bctrl._data['value'] = value
             await self.bctrl.publish(0)
         return value
     
     @bdes.putter
     async def bdes(self, instance, value):
+        if self.read_only:
+            return
         ioc = instance.group
         self.bdes_for_undo = ioc.bdes.value
         return value
