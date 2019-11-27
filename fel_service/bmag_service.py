@@ -35,13 +35,19 @@ class BMAGService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
 
-        #collect and parse design and current twiss at UNDSTART from model
-        #self.cmd_socket.send_pyobj({"cmd": "tao", "val": "python lat_list 1@0>>UNDSTART|design ele.a.alpha,ele.a.beta,ele.b.alpha,ele.b.beta"})
-        self.cmd_socket.send_pyobj({"cmd" : "tao", "val" : "show lat -design -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b UNDSTART"})
-        self.design = self.get_init_data()
-        #self.cmd_socket.send_pyobj({"cmd": "tao", "val": "python lat_list 1@0>>UNDSTART|model ele.a.alpha,ele.a.beta,ele.b.alpha,ele.b.beta"})
-        self.cmd_socket.send_pyobj({"cmd" : "tao", "val" : "show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b UNDSTART"})
-        self.model = self.get_init_data()
+        #collect and parse design and current twiss at UNDSTART from model.
+        #Sadly, the different beamlines give this marker point different names.  We just try all of em.            
+        und_marker_points = ("UNDSTART", "BEGUNDH", "BEGUNDS")
+        for marker_point in und_marker_points:
+            self.cmd_socket.send_pyobj({"cmd" : "tao", "val" : "show lat -design -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b {}".format(marker_point)})
+            response = self.cmd_socket.recv_pyobj()
+            if "ERROR" not in response['result'][0]:
+                self.design = self.get_init_data(response)
+                self.cmd_socket.send_pyobj({"cmd" : "tao", "val" : "show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b {}".format(marker_point)})
+                response = self.cmd_socket.recv_pyobj()
+                self.model = self.get_init_data(response)
+                break
+            
         #initialize bmag values
         msg = 'Buffer {}'.format(self['GDET:FEE1:241:ENRCHSTBR'].value)
         L.debug(msg)
@@ -52,10 +58,10 @@ class BMAGService(simulacrum.Service):
         L.info("Initialization complete.")
 
     #obtain alpha and beta values at UNDSTART
-    def get_init_data(self):
+    def get_init_data(self, response):
         #send query
         lattice=[]
-        line = self.cmd_socket.recv_pyobj()['result'][0].split()
+        line = response['result'][0].split()
         lattice = [ float(x) for x in line[-4:] ]
         return lattice
 
