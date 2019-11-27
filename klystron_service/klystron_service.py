@@ -68,7 +68,8 @@ class KlystronPV(PVGroup):
                             enum_strings=("Deactivate", "Reactivate", "Activate"))
     bc1_tstat = pvproperty(value=0, name=':BEAMCODE1_TSTAT', dtype=ChannelType.ENUM,
                             enum_strings=("Deactivated", "Activated"), read_only=True)
-    bc1_stat =  pvproperty(value=0, name=':BEAMCODE1_STAT', read_only=True)
+    #BEAMCODE1_STAT represents the same data as BEAMCODE1_TSTAT, but does it as a float, not an enum.  2=off 1=on.
+    bc1_stat =  pvproperty(value=2, name=':BEAMCODE1_STAT', read_only=True)
     trim = pvproperty(value=0, name=':TRIMPHAS', dtype=ChannelType.ENUM,
                       enum_strings=("Done", "TRIM"))
     mod_reset = pvproperty(value=0, name=':MOD:RESET', dtype=ChannelType.ENUM,
@@ -312,7 +313,7 @@ class KlystronPV(PVGroup):
         self.has_accel_triggers = value in ("Activate", "Reactivate")
         await self.on_off_changed()
         await self.bc1_tstat.write(1 if self.has_accel_triggers else 0)
-        await self.bc1_stat.write(1 if self.has_accel_triggers else 0)
+        await self.bc1_stat.write(1 if self.has_accel_triggers else 2)
         return value
     
     async def on_off_changed(self):
@@ -359,11 +360,6 @@ class KlystronService(simulacrum.Service):
         self.add_pvs(klys_pvs)
         self.add_pvs(cud_pvs)
         self.add_pvs(sbst_pvs)
-#        stat_aliases = {}
-#        for pv in self:
-#            if pv.endswith(":BEAMCODE1_TSTAT"):
-#                stat_aliases["{}:BEAMCODE1_STAT".format(pv[:-16])] = self[pv]
-#        self.update(stat_aliases)
         L.info("Initialization complete.")
 
     def get_klystron_ACTs_from_model(self):
