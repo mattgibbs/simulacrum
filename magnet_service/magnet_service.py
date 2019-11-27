@@ -21,6 +21,11 @@ class MagnetPV(PVGroup):
     bact = pvproperty(value=0.0, name=':BACT', read_only=True)
     bmin = pvproperty(value=0.0, name=':BMIN', read_only=True)
     bmax = pvproperty(value=0.0, name=':BMAX', read_only=True)
+    blem = pvproperty(value=0.0, name=':BLEM')
+    eact = pvproperty(value=0.0, name=':EACT')
+    edes = pvproperty(value=0.0, name=':EDES')
+    bdes_save = pvproperty(value=0.0, name=':BDESSAVE')
+    edes_save = pvproperty(value=0.0, name=':EDESSAVE')
     ctrl_strings = ("Ready", "TRIM", "PERTURB", "BCON_TO_BDES", "SAVE_BDES",
                     "LOAD_BDES", "UNDO_BDES", "DAC_ZERO", "CALB", "STDZ",
                     "RESET", "TURN_ON", "TURN_OFF")                
