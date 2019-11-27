@@ -13090,25 +13090,25 @@
 	"BEND:DMPH:400": {
 		"PREC": 7,
 		"EGU": "kG-m",
-		"DRVH": 12.33,
+		"DRVH": 14.33,
 		"DRVL": 0.0,
-		"HOPR": 12.33,
+		"HOPR": 14.33,
 		"LOPR": 0.0
 	},
 	"BEND:DMPH:410": {
 		"PREC": 7,
 		"EGU": "kG-m",
-		"DRVH": 12.33,
+		"DRVH": 14.33,
 		"DRVL": 0.0,
-		"HOPR": 12.33,
+		"HOPR": 14.33,
 		"LOPR": 0.0
 	},
 	"BEND:DMPH:420": {
 		"PREC": 7,
 		"EGU": "kG-m",
-		"DRVH": 12.33,
+		"DRVH": 14.33,
 		"DRVL": 0.0,
-		"HOPR": 12.33,
+		"HOPR": 14.33,
 		"LOPR": 0.0
 	},
 	"YCOR:DMPH:440": {
