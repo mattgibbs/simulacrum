@@ -112,7 +112,7 @@ class ModelService:
         for i in range(0,last_element_index+1):
             element_name = element_name_list[i]
             try:
-                device_name = util.convert_element_to_device(element_name)
+                device_name = simulacrum.util.convert_element_to_device(element_name)
             except KeyError:
                 device_name = ""
             element_rmat = element_data['ele.mat6'][i]
