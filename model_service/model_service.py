@@ -88,47 +88,41 @@ class ModelService:
         """
         start_time = time.time()
         #First we get a list of all the elements.
-        element_list = self.tao_cmd("python lat_ele 1@0")
-        element_list = [s.split(";") for s in element_list]
-        element_id_list, element_name_list = zip(*element_list)
+        #NOTE: the "-no_slaves" option for python lat_list only works in Tao 2019_1112 or above.
+        element_name_list = self.tao.cmd("python lat_list -no_slaves 1@0>>*|model ele.name")
+        print(element_name_list)
+        for row in element_name_list:
+            assert "ERROR" not in element_name_list, "Fetching element names failed.  This is probably because a version of Tao older than 2019_1112 is being used."
         last_element_index = 0
         for i, row in enumerate(reversed(element_name_list)):
             if row == "END":
                 last_element_index = len(element_name_list)-1-i
                 break
-        element_name_list = element_name_list[1:last_element_index+1]
-        element_id_list = element_id_list[1:last_element_index+1]
-        s_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.s")
-        l_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.l")
-        p0c_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:orbit.energy")
-        alpha_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.alpha")
-        beta_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.beta")
-        eta_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.eta")
-        etap_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.etap")
-        psi_x_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.a.phi")
-        alpha_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.alpha")
-        beta_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.beta")
-        eta_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.eta")
-        etap_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.etap")
-        psi_y_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.b.phi")
-        rmat_list = self.tao.cmd_real("python lat_list 1@0>>*|model real:ele.mat6").reshape((-1, 6, 6))
+        element_data = {}
+        attrs = ("ele.s", "ele.l", "orbit.energy", "ele.a.alpha", "ele.a.beta", "ele.a.eta", "ele.a.etap", "ele.a.phi", "ele.b.alpha", "ele.b.beta", "ele.b.eta", "ele.b.etap", "ele.b.phi", "ele.mat6")
+        for attr in attrs:
+            element_data[attr] = self.tao.cmd_real("python lat_list -no_slaves 1@0>>*|model real:{}".format(attr))
+            if attr == 'ele.mat6':
+                element_data[attr] = element_data[attr].reshape((-1, 6, 6))
+            assert len(element_data[attr]) == len(element_name_list), "Number of elements in model data for {} doesn't match number of element names.".format(attr)
+        
         combined_rmat = np.identity(6)
         twiss_table_rows = []
         rmat_table_rows = []
-        for i, element_id in enumerate(element_id_list):
+        for i in range(0,last_element_index+1):
             element_name = element_name_list[i]
             try:
-                device_name = simulacrum.util.convert_element_to_device(element_name)
+                device_name = util.convert_element_to_device(element_name)
             except KeyError:
                 device_name = ""
-            element_rmat = rmat_list[i]
+            element_rmat = element_data['ele.mat6'][i]
             rmat = np.matmul(element_rmat, combined_rmat)
             combined_rmat = rmat
-            twiss_table_rows.append({"element": element_name, "device_name": device_name, "s": s_list[i], "length": l_list[i], "p0c": p0c_list[i],
-                               "alpha_x": alpha_x_list[i], "beta_x": beta_x_list[i], "eta_x": eta_x_list[i], "etap_x": etap_x_list[i], "psi_x": psi_x_list[i],
-                               "alpha_y": alpha_y_list[i], "beta_y": beta_y_list[i], "eta_y": eta_y_list[i], "etap_y": etap_y_list[i], "psi_y": psi_y_list[i]})
+            twiss_table_rows.append({"element": element_name, "device_name": device_name, "s": element_data['ele.s'][i], "length": element_data['ele.l'][i], "p0c": element_data['orbit.energy'][i],
+                               "alpha_x": element_data['ele.a.alpha'][i], "beta_x": element_data['ele.a.beta'][i], "eta_x": element_data['ele.a.eta'][i], "etap_x": element_data['ele.a.etap'][i], "psi_x": element_data['ele.a.phi'][i],
+                               "alpha_y": element_data['ele.b.alpha'][i], "beta_y": element_data['ele.b.beta'][i], "eta_y": element_data['ele.b.eta'][i], "etap_y": element_data['ele.b.etap'][i], "psi_y": element_data['ele.b.phi'][i]})
             rmat_table_rows.append({
-                               "element": element_name, "device_name": device_name, "s": s_list[i], "length": l_list[i],
+                               "element": element_name, "device_name": device_name, "s": element_data['ele.s'][i], "length": element_data['ele.l'][i],
                                "r11": rmat[0,0], "r12": rmat[0,1], "r13": rmat[0,2], "r14": rmat[0,3], "r15": rmat[0,4], "r16": rmat[0,5],
                                "r21": rmat[1,0], "r22": rmat[1,1], "r23": rmat[1,2], "r24": rmat[1,3], "r25": rmat[1,4], "r26": rmat[1,5],
                                "r31": rmat[2,0], "r32": rmat[2,1], "r33": rmat[2,2], "r34": rmat[2,3], "r35": rmat[2,4], "r36": rmat[2,5],
