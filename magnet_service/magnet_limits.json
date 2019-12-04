@@ -10586,10 +10586,10 @@
 	"QUAD:LTUH:485": {
 		"PREC": 7,
 		"EGU": "kG",
-		"DRVH": 220.0,
-		"DRVL": 0.0,
-		"HOPR": 220.0,
-		"LOPR": 0.0
+		"DRVH": -0.99,
+		"DRVL": -140,
+		"HOPR": -0.99,
+		"LOPR": -140
 	},
 	"XCOR:LTUH:488": {
 		"PREC": 7,
@@ -10618,10 +10618,10 @@
 	"QUAD:LTUH:495": {
 		"PREC": 7,
 		"EGU": "kG",
-		"DRVH": 220.0,
-		"DRVL": 0.0,
-		"HOPR": 220.0,
-		"LOPR": 0.0
+		"DRVH": -0.99,
+		"DRVL": -140,
+		"HOPR": -0.99,
+		"LOPR": -140
 	},
 	"BEND:LTUH:505": {
 		"PREC": 7,
@@ -10682,10 +10682,10 @@
 	"QUAD:LTUH:585": {
 		"PREC": 7,
 		"EGU": "kG",
-		"DRVH": 220.0,
-		"DRVL": 0.0,
-		"HOPR": 220.0,
-		"LOPR": 0.0
+		"DRVH": -0.99,
+		"DRVL": -140,
+		"HOPR": -0.99,
+		"LOPR": -140
 	},
 	"XCOR:LTUH:588": {
 		"PREC": 7,
