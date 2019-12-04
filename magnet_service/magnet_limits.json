@@ -9639,38 +9639,6 @@
 		"HOPR": 0.0,
 		"LOPR": -0.0
 	},
-	"YCOR:CLTH:133": {
-		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 0.01,
-		"DRVL": -0.01,
-		"HOPR": 0.01,
-		"LOPR": -0.01
-	},
-	"QUAD:CLTH:140": {
-		"PREC": 7,
-		"EGU": "kG",
-		"DRVH": 33.29,
-		"DRVL": 0.0,
-		"HOPR": 33.29,
-		"LOPR": 0.0
-	},
-	"XCOR:CLTH:168": {
-		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 0.01,
-		"DRVL": -0.01,
-		"HOPR": 0.01,
-		"LOPR": -0.01
-	},
-	"QUAD:CLTH:170": {
-		"PREC": 7,
-		"EGU": "kG",
-		"DRVH": 18.5,
-		"DRVL": 0.0,
-		"HOPR": 18.5,
-		"LOPR": 0.0
-	},
 	"BEND:SLTH:145": {
 		"PREC": 7,
 		"EGU": "kG-m",
