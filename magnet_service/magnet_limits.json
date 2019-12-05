@@ -13026,10 +13026,10 @@
 	"QUAD:DMPH:380": {
 		"PREC": 7,
 		"EGU": "kG",
-		"DRVH": 48.6,
-		"DRVL": 0.0,
-		"HOPR": 48.6,
-		"LOPR": 0.0
+		"DRVH": 40,
+		"DRVL": 0.26,
+		"HOPR": 40,
+		"LOPR": 0.26
 	},
 	"YCOR:DMPH:391": {
 		"PREC": 7,
@@ -13049,35 +13049,35 @@
 	},
 	"BEND:DMPH:395": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 0.33,
-		"DRVL": 0.0,
-		"HOPR": 0.33,
-		"LOPR": 0.0
+		"EGU": "GeV/c",
+		"DRVH": 17.431,
+		"DRVL": 0.055,
+		"HOPR": 17.431,
+		"LOPR": 0.055
 	},
 	"BEND:DMPH:400": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 14.33,
-		"DRVL": 0.0,
-		"HOPR": 14.33,
-		"LOPR": 0.0
+		"EGU": "GeV/c",
+		"DRVH": 17.431,
+		"DRVL": 0.055,
+		"HOPR": 17.431,
+		"LOPR": 0.055
 	},
 	"BEND:DMPH:410": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 14.33,
-		"DRVL": 0.0,
-		"HOPR": 14.33,
-		"LOPR": 0.0
+		"EGU": "GeV/c",
+		"DRVH": 17.431,
+		"DRVL": 0.055,
+		"HOPR": 17.431,
+		"LOPR": 0.055
 	},
 	"BEND:DMPH:420": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 14.33,
-		"DRVL": 0.0,
-		"HOPR": 14.33,
-		"LOPR": 0.0
+		"EGU": "GeV/c",
+		"DRVH": 17.431,
+		"DRVL": 0.055,
+		"HOPR": 17.431,
+		"LOPR": 0.055
 	},
 	"YCOR:DMPH:440": {
 		"PREC": 7,
