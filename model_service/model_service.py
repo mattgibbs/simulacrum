@@ -89,8 +89,8 @@ class ModelService:
         start_time = time.time()
         #First we get a list of all the elements.
         #NOTE: the "-no_slaves" option for python lat_list only works in Tao 2019_1112 or above.
-        element_name_list = self.tao.cmd("python lat_list -no_slaves 1@0>>*|model ele.name")
-        print(element_name_list)
+        element_name_list = self.tao.cmd("python lat_list -no_slaves -track_only 1@0>>*|model ele.name")
+        L.debug(element_name_list)
         for row in element_name_list:
             assert "ERROR" not in element_name_list, "Fetching element names failed.  This is probably because a version of Tao older than 2019_1112 is being used."
         last_element_index = 0
@@ -101,7 +101,7 @@ class ModelService:
         element_data = {}
         attrs = ("ele.s", "ele.l", "orbit.energy", "ele.a.alpha", "ele.a.beta", "ele.a.eta", "ele.a.etap", "ele.a.phi", "ele.b.alpha", "ele.b.beta", "ele.b.eta", "ele.b.etap", "ele.b.phi", "ele.mat6")
         for attr in attrs:
-            element_data[attr] = self.tao.cmd_real("python lat_list -no_slaves 1@0>>*|model real:{}".format(attr))
+            element_data[attr] = self.tao.cmd_real("python lat_list -no_slaves -track_only 1@0>>*|model real:{}".format(attr))
             if attr == 'ele.mat6':
                 element_data[attr] = element_data[attr].reshape((-1, 6, 6))
             assert len(element_data[attr]) == len(element_name_list), "Number of elements in model data for {} doesn't match number of element names.".format(attr)
