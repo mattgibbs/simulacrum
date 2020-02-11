@@ -8,9 +8,55 @@ from caproto import ChannelType
 import simulacrum
 import zmq
 from zmq.asyncio import Context
-
+    
+m_electron = 0.5109989461E6 #eV
+c_light = 2.99792458E8 # m/sec
 #set up python logger
 L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
+
+
+class LaserHeaterUndulatorPV(PVGroup):
+    trim =  pvproperty(value=0, name=':TRIM.PROC')
+    kactH = pvproperty(value=0.0, name=':KACT', read_only=True)
+    kdesH = pvproperty(value=0.0, name=':KDES')
+
+    def __init__(self, device_name, element_name, change_callback, initial_values, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.device_name = device_name  
+        self.element_name = element_name
+        self.kactH._data['value'] = float(initial_values['kactH'])
+        self.kdesH._data['value'] = float(initial_values['kactH'])
+        self.change_callback = change_callback 
+
+    @trim.putter
+    async def trim(self, instance, value):
+        ioc = instance.group
+        await asyncio.sleep(0.2)
+        await ioc.kactH.write(ioc.kdesH.value)
+        await self.change_callback(self, ioc.kactH.value)  
+
+ 
+class phaseShifterPV(PVGroup):
+    phas_proc =  pvproperty(value=0, name=':ConvertPI2Gap.PROC' ) #Go command 
+    piact = pvproperty(value=0.0, name=':PIAct', read_only=True)
+    pides = pvproperty(value=0.0, name=':PIDes')
+
+
+    def __init__(self, device_name, element_name, change_callback, initial_values, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.device_name = device_name  
+        self.element_name = element_name
+        self.piact._data['value'] = float(initial_values['piact'])
+        self.pides._data['value'] = float(initial_values['piact'])
+        self.change_callback = change_callback 
+
+    @phas_proc.putter
+    async def phas_proc(self, instance, value):
+        ioc = instance.group
+        await asyncio.sleep(0.2)
+        await ioc.piact.write(ioc.pides.value)
+        await self.change_callback(self, ioc.piact.value)  
+
 
 class UndulatorPV(PVGroup):
     useg_proc = pvproperty(value=0, name=':ConvertK2Gap.PROC' ) #Go command
@@ -40,29 +86,69 @@ class UndulatorPV(PVGroup):
         await ioc.kact.write(ioc.kdes.value)
         await self.change_callback(self, ioc.kact.value)  
 
-def convert_umahx_element_to_device(ele_name):
-    unit_number = ele_name.replace('UMAHX','')
-    return f'USEG:UNDH:{unit_number}50'
+def convert_element_to_device(ele_name):
+    if ele_name.startswith('UMAHXH'):
+        unit =  ele_name.replace('UMAHXH','')
+        val = f'USEG:UNDH:{unit}50' 
+    elif ele_name.startswith('PSHXH'):
+        unit = ele_name.replace('PSHXH','')
+        val = f'PHAS:UNDH:{unit}95'
+    elif ele_name.startswith('LH_UND'):
+        unit = '466'
+        val = f'USEG:IN20:{unit}'
+    return val
 
-def convert_umahx_device_to_element(device_name):
-    unit_number = device_name.split(':')[2][0:2]
-    return f'UMAHX{unit_number}'
-
+def convert_device_to_element(device_name):
+    dev = device_name.split(':')
+    device = dev[0]
+    location = dev[1]
+    unit_number = dev[2][0:2]
+    
+    if device=='USEG':
+        if location=='IN20':
+            dev='LH_UND'
+        else:
+            dev='UMAHXH'
+    elif device=='PHAS':
+        dev='PSHXH'
+    return f'{dev}{unit_number}'
+  
 def _parse_undulator_table(table):
     splits = [row.split() for row in table] 
-    return {convert_umahx_element_to_device(ele_name): {"kact": und_B_max_to_Kact(float(b_max))} for (_, ele_name, _, _, l, b_max) in splits if 'UMAHX' in ele_name}
+    unds = {convert_element_to_device(ele_name): {"kact": und_B_max_to_Kact(float(b_max))} for (_, ele_name, _, _, l, b_max) in splits if 'UMAHX' in ele_name}
+    phas = {convert_element_to_device(ele_name): {"piact": B_max_to_PhaseIntegral(float(b_max))} for (_, ele_name, _, _, l, b_max) in splits if 'PSHXH' in ele_name}
+    vals = dict(unds, **phas)
+    return vals
 
 def und_B_max_to_Kact(b_max):
     # k=2, b_max = 8.2382661E-01 T
-    # k = 2 pi electron_mass / (light_velocity * 0.026) / b_max
-    # k = 0.9337 B(T) labda_u (cm)
-    return  0.9337 * b_max * 2.6
+    return  (c_light * 0.026)  *  b_max / (2*np.pi*m_electron) 
+
+def B_max_to_PhaseIntegral(b_max):
+    pshxh_L        = 0.0495 # m 
+    pshxh_L_period = 0.045 # m 
+    phaseIntegral = pshxh_L /2 * (b_max *  pshxh_L_period / (2*np.pi))**2 *1E9
+    return phaseIntegral
 
 def Kact_to_und_B_max(k):
-    return k/2.6/0.9337
+    #SXR b_max = my_umasxh_k * 2*pi*m_electron / (c_light * 0.039)
+    #HXR b_max = my_umahxh_k * 2*pi*m_electron / (c_light * 0.026) with my_umahxh_k = 2.0
+    return k * 2*np.pi*m_electron / (c_light * 0.026)
+
+def Kact_to_heater_b_max(und_k):
+    b_max = und_k * 2*np.pi*m_electron / (c_light * 0.054)
+    return b_max
+
+def PhaseIntegral_to_und_B_max(phaseIntegral):
+    #from ...lcls-lattice/bmad/master/UND.bmad
+    #SXR b_max = 2*pi / pssxh_L_period * sqrt(2 * pssxh_phase_integral / pssxh_L  ) with pssxh_L        = 0.0825   ! m and pssxh_L_period = 0.075 ! m 
+    pshx_L_period = 0.045 # m 
+    pshx_L        = 0.0495 # m 
+    b_max = 2*np.pi / pshx_L_period * np.sqrt(2 * phaseIntegral / pshx_L  )
+    return b_max
 
 class UndulatorService(simulacrum.Service):
-    conversion_to_BMAD_for_und_type = {"USEG": Kact_to_und_B_max}
+    conversion_to_BMAD_for_und_type = {"USEG": Kact_to_und_B_max, "PHAS": PhaseIntegral_to_und_B_max}
     def __init__(self):
         super().__init__()
         self.ctx = Context.instance()
@@ -71,25 +157,31 @@ class UndulatorService(simulacrum.Service):
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         init_vals = self.get_initial_values()
         undulator_element_list = self.get_undulator_list_from_model() 
-        undulator_device_list = [convert_umahx_element_to_device(element) for element in undulator_element_list]
-        print(undulator_device_list)
+        undulator_device_list = [convert_element_to_device(element) for element in undulator_element_list]
         for device_name in undulator_device_list:
             if device_name in init_vals:
                 initial_value=init_vals[device_name]
-                print(f'{device_name} {convert_umahx_device_to_element(device_name)} {initial_value}')
-
-        und_pvs = {device_name: UndulatorPV(device_name, convert_umahx_device_to_element(device_name), self.on_undulator_change, initial_values=init_vals[device_name], prefix=device_name) 
+                print(f'{device_name} {convert_device_to_element(device_name)} {initial_value}')
+        und_pvs = {device_name: UndulatorPV(device_name, convert_device_to_element(device_name), self.on_undulator_change, initial_values=init_vals[device_name], prefix=device_name) 
                     for device_name in undulator_device_list
-                    if device_name in init_vals}
-
-        
-        print(und_pvs)
+                    if device_name in init_vals and device_name.startswith('USEG')}
+        phas_pvs = {device_name: phaseShifterPV(device_name, convert_device_to_element(device_name), self.on_undulator_change, initial_values=init_vals[device_name], prefix=device_name) 
+                    for device_name in undulator_device_list
+                    if device_name in init_vals and device_name.startswith('PHAS')}
+        dev_name = 'USEG:IN20:466'
+        init_valsH={'kactH':1.3852} 
+        laser_heater_pvs = {dev_name:  LaserHeaterUndulatorPV('USEG:IN20:466', 'LH_UND', self.on_heater_und_change,  initial_values=init_valsH , prefix=dev_name)}
+        #laser_heater_pvs = {dev_name:  LaserHeaterUndulatorPV('USEG:IN20:466', 'LH_UND', self.on_undulator_change,  initial_values=init_valsH , prefix=dev_name)}
+        print(laser_heater_pvs.keys())
+        print(phas_pvs.keys())
+        self.add_pvs(laser_heater_pvs)
+        self.add_pvs(phas_pvs)
         self.add_pvs(und_pvs)
         L.info("Initialization complete.")
 
     def get_undulator_list_from_model(self):
         element_list = []
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele -no_slaves UMAHX*"})
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show ele -no_slaves Wiggler::*  "})
         for row in self.cmd_socket.recv_pyobj()['result'][:-1]:
             element_list.append(row.split(None, 3)[1])
         return element_list
@@ -112,9 +204,11 @@ class UndulatorService(simulacrum.Service):
 
     def get_undulator_Kacts_from_model(self):
         init_vals = {}
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -no_slaves -attribute {attr} {list}".format(attr="B_MAX", list="UMAHX*")})
-        table = self.cmd_socket.recv_pyobj()
-        init_vals.update(_parse_undulator_table(table['result']))
+        for (attr, dev_list, parse_func) in [("B_MAX", "UMAHX*", _parse_undulator_table), ("B_MAX", "PSHX*", _parse_undulator_table)]:
+            self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute {attr} {list}".format(attr=attr, list=dev_list)})
+#        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -no_slaves -attribute {attr} {list}".format(attr="B_MAX", list="UMAHX*")})
+            table = self.cmd_socket.recv_pyobj()
+            init_vals.update(_parse_undulator_table(table['result']))
         return init_vals
 
     async def on_undulator_change(self, undulator_pv, value):
@@ -128,6 +222,13 @@ class UndulatorService(simulacrum.Service):
                                                                                                    val=conv(value))})
         self.cmd_socket.recv_pyobj()
         L.info('Updated {}.'.format(undulator_pv.device_name))
+
+    async def on_heater_und_change(self, undulator_pv, value):
+        val = Kact_to_heater_b_max(value)
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele LH_UND BMAX = {val}".format(val)})
+        self.cmd_socket.recv_pyobj()
+        L.info('Updated {}.'.format(undulator_pv.device_name))
+
 
 def main():
     service = UndulatorService()
