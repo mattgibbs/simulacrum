@@ -289,14 +289,47 @@ class MagnetService(simulacrum.Service):
         # We treat chicane bends differently than the rest of the bends - they use kG*m units, rather than GeV/c
         # Tao has no way to tell the two apart, so we have to do it ourselves.  Yuck.
         # NOTE: These lists only include cu_hxr and cu_sxr devices right now.
-        chicane_bends = ("BXH", "BX1", "BX2", "BCX31", "BCX32", "BCX35", "BCX36", "BCXHS", "BCXXL", "BCXSS")
-        dl_bends = ("BXG", "BX0", "BYCUS", "BRCUSDC", "BLRCUS", "BKRCUS", "BRCUS1", "BY1", "BY2", "BX3", "BYDSH", "BYDSS", "BYD")
+        # This dictionary maps BMAD elements to the "master" bend element.
+        # In the case of split bends, both splits map to the same master.
+        chicane_bends = {"BXH1": "BXH2", "BXH2": "BXH2", "BXH3": "BXH2", "BXH4": "BXH2",
+                         "BX11": "BX12", "BX12": "BX12", "BX13": "BX12", "BX14": "BX12",
+                         "BX21": "BX22", "BX22": "BX22", "BX23": "BX22", "BX24": "BX22",
+                         "BCX311": "BCX312", "BCX312": "BCX312", "BCX313": "BCX312", "BCX314": "BCX312",
+                         "BCX31B1": "BCX31B2", "BCX31B2": "BCX31B2", "BCX31B3": "BCX31B2", "BCX31B4": "BCX31B2",
+                         "BCX321": "BCX322", "BCX322": "BCX322", "BCX323": "BCX322", "BCX324": "BCX322",
+                         "BCX32B1": "BCX32B2", "BCX32B2": "BCX32B2", "BCX32B3": "BCX32B2", "BCX32B4": "BCX32B2",
+                         "BCX351": "BCX352", "BCX352": "BCX352", "BCX353": "BCX352", "BCX354": "BCX352",
+                         "BCX361": "BCX362", "BCX362": "BCX362", "BCX363": "BCX362", "BCX364": "BCX362",
+                         "BCXHS1": "BCXHS2", "BCXHS2": "BCXHS2", "BCXHS3": "BCXHS2", "BCXHS4": "BCXHS2",
+                         "BCXXL1": "BCXXL2", "BCXXL2": "BCXXL2", "BCXXL3": "BCXXL2", "BCXXL4": "BCXXL2",
+                         "BCXSS1": "BCXSS2", "BCXSS2": "BCXSS2", "BCXSS3": "BCXSS2", "BCXSS4": "BCXSS2",
+                        }
+
+        dl_bends = {"BX01": "BX02", "BX02": "BX02",
+                    "BYCUS1": "BYCUS1", "BYCUS2": "BYCUS1",
+                    "BRCUSDC1": "BRCUSDC1", "BRCUSDC2": "BRCUSDC1",
+                    "BLRCUS": "BLRCUS",
+                    "BKRCUS": "BKRCUS",
+                    "BRCUS1": "BRCUS1",
+                    "BY1": "BY1", "BY2": "BY1",
+                    "BY1B": "BY1B", "BY2B": "BY1B",
+                    "BX31": "BYD1", "BX32": "BYD1", "BX35": "BYD1", "BX36": "BYD1", "BYD1": "BYD1", "BYD2": "BYD1", "BYD3": "BYD1",
+                    "BYDSH": "BYDSH",
+                    "BX31B": "BYD1B", "BX32B": "BYD1B", "BX35B": "BYD1B", "BX36B": "BYD1B", "BYD1B": "BYD1B", "BYD2B": "BYD1B", "BYD3B": "BYD1B",
+                    "BYDSS": "BYDSS",
+                    "BXKIK": "BXKIK",
+                    "BYKIK1": "BYKIK1", "BYKIK2": "BYKIK1",
+                    "BYKIK1S": "BYKIK1S", "BYKIK2S": "BYKIK1S",
+                   }
         # Get a list of all bends, and the attributes we need to use them.
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute g -attribute b_field -attribute b_field_err SBend::*"})
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -tracking_elements -no_label_lines -attribute g -attribute b_field -attribute b_field_err SBend::*"})
         result = self.cmd_socket.recv_pyobj()
         # Parse this list, make all the conversion factors, and create the magnet PVs for the bends.
-        bend_elements = []
+        # We store them in a 'bends' dictionary, keyed on the element name of the master bend.
+        bends = {}
+        master_bends = {}
         for line in result['result']:
+            L.debug(line)
             s = line.split()
             element_name = s[1]
             l = float(s[4]) # Length of the magnet (in meters)
@@ -305,77 +338,30 @@ class MagnetService(simulacrum.Service):
             b_field_err_init = float(s[7]) # The "field error" for this magnet, in tesla.
             # Make a 'BendElement', which is usually half of a bend, for every item in this list.
             bend_type = None
-            if any([element_name.startswith(chicane_prefix) for chicane_prefix in chicane_bends]):
+            if element_name in chicane_bends:
                 L.debug("{} is in a chicane".format(element_name))
+                master_bend_name = chicane_bends[element_name]
                 bend_type = "chicane"
-            elif any([element_name.startswith(bend_prefix) for bend_prefix in dl_bends]):
+            elif element_name in dl_bends:
                 L.debug("{} is in a bend".format(element_name))
+                master_bend_name = dl_bends[element_name]
                 bend_type = "dogleg"
             else:
                 L.warning("Found an un-handled bend magnet: {}.  Ignoring it, not creating PVs.".format(element_name))
             if bend_type:
-                bend_elements.append(BendElement(element_name, l, g, b_init_tesla, b_field_err_init, bend_type))
-            
-        #Group the elements by bend.
-        elements_grouped_by_bend = {}
-        for element in bend_elements:
-            # If the last element is A, B, 1, or 2, assume this element is part of a 'split' bend, otherwise assume there is only one element in the bend.
-            bend_name = element.name[:-1] if element.name[-1] in ("A", "B", "1", "2") else element.name
-            if bend_name not in elements_grouped_by_bend:
-                elements_grouped_by_bend[bend_name] = [element]
-            else:
-                elements_grouped_by_bend[bend_name].append(element)
-        
-        # Make Bend objects for each bend we've found.
-        bends = []       
-        for bend_name in elements_grouped_by_bend:
-            elements = elements_grouped_by_bend[bend_name]
-            L.debug("elements in {}: {}".format(bend_name, [e.name for e in elements]))
-            bend_type = elements[0].bend_type
-            bends.append(Bend(bend_name, elements, bend_type))
-            
-        # Group the bends by string.
-        bends_grouped_by_string = {}
-        for bend in bends:
-            string_name = bend.element_name[:-1]
-            if string_name.startswith("BX3"):
-                # BX3 string is in series with the BYD string, use that one instead.
-                string_name = "BYD" + string_name[3:]
-            if string_name not in bends_grouped_by_string:
-                bends_grouped_by_string[string_name] = [bend]
-            else:
-                bends_grouped_by_string[string_name].append(bend)
-        
+                if master_bend_name not in bends:
+                    bends[master_bend_name] = []
+                bend = Bend(element_name, l, g, b_init_tesla, b_field_err_init, bend_type)
+                bends[master_bend_name].append(bend)
+                if element_name == master_bend_name:
+                    master_bends[master_bend_name] = bend
+                
         # Make BendString objects for each string we've found.
         bend_strings = []
-        for string_name in bends_grouped_by_string:
-            bends_for_string = bends_grouped_by_string[string_name]
+        for string_name in bends:
+            bends_for_string = bends[string_name]
             # Determine the 'master' bend.
-            if bends_for_string[0].bend_type == "chicane":
-                # For chicanes, this is easy: its always the second bend.
-                bends_ending_in_2 = [bend for bend in bends_for_string if bend.element_name.endswith("2")]
-                if len(bends_ending_in_2) != 1:
-                    raise Exception("Lattice consistency problem with string {}: multiple bends in chicane end in 2: {}".format(string_name, [b.element_name for b in bends_ending_in_2]))
-                master_bend = bends_ending_in_2[0]
-            if bends_for_string[0].bend_type == "dogleg":
-                # For dogleg bends, its less clear-cut.
-                if string_name.startswith("BYD") and not string_name.startswith("BYDS"):
-                    L.debug("Bends in BYD string: %s", repr([b.element_name for b in bends_for_string]))
-                    # BYD string master is BYD1.
-                    byd_1_bend = [bend for bend in bends_for_string if bend.element_name.startswith("BYD1")]
-                    if len(byd_1_bend) != 1:
-                        raise Exception("Lattice consistency problem: multiple BYD1 bends found: {}".format(byd_1_bend))
-                    master_bend = byd_1_bend[0]
-                elif string_name in ("BRCUS", "BYDS", "BYDS"):
-                    if len(bends_for_string) != 1:
-                        raise Exception("Lattice consistency problem: Multiple bends in {} found: {}".format(string_name, bends_for_string))
-                    master_bend = bends_for_string[0]
-                else:
-                    #If not BYD or BRCUS, we also use the second-magnet rule.
-                    bends_ending_in_2 = [bend for bend in bends_for_string if bend.element_name.endswith("2")]
-                    if len(bends_ending_in_2) != 1:
-                        raise Exception("Lattice consistency problem with string {}: multiple bends in dogleg end in 2: {}".format(string_name, [b.element_name for b in bends_ending_in_2]))
-                    master_bend = bends_ending_in_2[0]
+            master_bend = master_bends[string_name]
             L.debug("Making a string for {}.  Bend list: {}.  Master: {}".format(string_name, [bend.element_name for bend in bends_for_string], master_bend.element_name))
             bend_strings.append(BendString(bends_for_string, master_bend, self.cmd_socket))
         
@@ -388,11 +374,12 @@ class MagnetService(simulacrum.Service):
                 pvs.update({bend_pv.device_name: bend_pv for bend_pv in string.make_pvs(limits)})
             return pvs
 
-class BendElement:
-    """ Represents one 'element' in a bend magnet.  This class exists
-        because each bend magnet is represented as two elements in the lattice. """
+class Bend:
+    """ Represents one bend magnet.  Usually these are part of a string.
+        One MagnetPV object is created for each bend magnet. """
     def __init__(self, name, l, g, b_init_tesla, b_field_err_init, bend_type):
-        self.name = name
+        self.element_name = name
+        self.device_name = simulacrum.util.convert_element_to_device(self.element_name)
         self.l = l
         self.g = g
         self.b_init_tesla = b_init_tesla
@@ -416,35 +403,6 @@ class BendElement:
         b_field_error =  b_field_tesla - self.b_init_tesla
         L.debug("%s: Converted %f %s to %f T.  b_init = %f, b_err = %f", self.name, b_field, field_units, b_field_tesla, self.b_init_tesla, b_field_error)
         return b_field_error
-
-class Bend:
-    """ Represents one bend magnet.  Usually these are part of a string.
-        One MagnetPV object is created for each bend magnet. """
-    def __init__(self, name, elements, bend_type):
-        self.element_name = name
-        self.device_name = simulacrum.util.convert_element_to_device(self.element_name)
-        self.elements = elements
-        self.l = sum([element.l for element in self.elements])
-        self.g = sum([element.g for element in self.elements])/len(self.elements)
-        self.b_init_tesla = sum([element.b_init_tesla for element in self.elements])/len(self.elements)
-        self.bend_type = bend_type
-        self.pv = None
-        assert bend_type in ("chicane", "dogleg")
-        if bend_type == "chicane":
-            self.unit = "kG*m"
-        elif bend_type == "dogleg":
-            self.unit = "GeV/c"
-    
-    def set_field_strength_commands(self, b_field):
-        commands = []
-        for element in self.elements:
-            if self.bend_type == "chicane":
-                b_err = element.convert_to_b_field_err(b_field/self.l)
-            elif self.bend_type == "dogleg":
-                b_err = element.convert_to_b_field_err(b_field)
-            command = f"set ele {element.name} b_field_err = {b_err}"
-            commands.append(command)
-        return commands
     
     def convert_tesla_to_epics_units(self, b_field_tesla):
         if self.bend_type == "chicane":
@@ -453,6 +411,13 @@ class Bend:
             b_field_kgm = -1.0 * 2.99792458e8 * b_field_tesla / (self.g * 10**9)
         L.debug("%s: Converted %f T to %f kGm.  Length is %f", self.element_name, b_field_tesla, b_field_kgm, self.l)
         return b_field_kgm
+    
+    def set_field_strength_command(self, b_field):
+        if self.bend_type == "chicane":
+            b_err = element.convert_to_b_field_err(b_field/self.l)
+        elif self.bend_type == "dogleg":
+            b_err = element.convert_to_b_field_err(b_field)
+        return f"set ele {element.name} b_field_err = {b_err}"
     
     def make_pv(self, read_only, precision=None, upper_ctrl_limit=None, lower_ctrl_limit=None, change_callback=None):
         init_vals = {"bact": self.convert_tesla_to_epics_units(self.b_init_tesla), "units": self.unit}
@@ -477,8 +442,8 @@ class BendString:
     def send_field_strength_to_model(self, b_field_from_epics):
         commands = []
         for bend in self.bends:
-            sub_commands = bend.set_field_strength_commands(b_field_from_epics)
-            commands.extend(sub_commands)
+            sub_command = bend.set_field_strength_command(b_field_from_epics)
+            commands.append(sub_command)
         L.debug("Sending batch to model: {}".format(commands))
         self.cmd_socket.send_pyobj({"cmd": "tao_batch", "val": commands})
         return self.cmd_socket.recv_pyobj()

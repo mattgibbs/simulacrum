@@ -97,7 +97,7 @@ class GenericPVService(simulacrum.Service):
                 type_for_pv = pv_args[1]
                 initial_value = None
                 if len(pv_args) > 2:
-                    initial_value = pv_args[2]
+                    initial_value = pv_args[2].strip()
                     array_value = None
                     try:
                         parsed_val = json.loads(initial_value)

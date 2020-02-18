@@ -89,8 +89,8 @@ class ModelService:
         start_time = time.time()
         #First we get a list of all the elements.
         #NOTE: the "-no_slaves" option for python lat_list only works in Tao 2019_1112 or above.
-        element_name_list = self.tao.cmd("python lat_list -no_slaves 1@0>>*|model ele.name")
-        print(element_name_list)
+        element_name_list = self.tao.cmd("python lat_list -track_only 1@0>>*|model ele.name")
+        L.debug(element_name_list)
         for row in element_name_list:
             assert "ERROR" not in element_name_list, "Fetching element names failed.  This is probably because a version of Tao older than 2019_1112 is being used."
         last_element_index = 0
@@ -99,9 +99,9 @@ class ModelService:
                 last_element_index = len(element_name_list)-1-i
                 break
         element_data = {}
-        attrs = ("ele.s", "ele.l", "orbit.energy", "ele.a.alpha", "ele.a.beta", "ele.a.eta", "ele.a.etap", "ele.a.phi", "ele.b.alpha", "ele.b.beta", "ele.b.eta", "ele.b.etap", "ele.b.phi", "ele.mat6")
+        attrs = ("ele.s", "ele.l", "orbit.energy", "ele.a.alpha", "ele.a.beta", "ele.x.eta", "ele.x.etap", "ele.a.phi", "ele.b.alpha", "ele.b.beta", "ele.y.eta", "ele.y.etap", "ele.b.phi", "ele.mat6")
         for attr in attrs:
-            element_data[attr] = self.tao.cmd_real("python lat_list -no_slaves 1@0>>*|model real:{}".format(attr))
+            element_data[attr] = self.tao.cmd_real("python lat_list -track_only 1@0>>*|model real:{}".format(attr))
             if attr == 'ele.mat6':
                 element_data[attr] = element_data[attr].reshape((-1, 6, 6))
             assert len(element_data[attr]) == len(element_name_list), "Number of elements in model data for {} doesn't match number of element names.".format(attr)
@@ -112,15 +112,15 @@ class ModelService:
         for i in range(0,last_element_index+1):
             element_name = element_name_list[i]
             try:
-                device_name = simulacrum.util.convert_element_to_device(element_name)
+                device_name = simulacrum.util.convert_element_to_device(element_name.split("#")[0])
             except KeyError:
                 device_name = ""
             element_rmat = element_data['ele.mat6'][i]
             rmat = np.matmul(element_rmat, combined_rmat)
             combined_rmat = rmat
             twiss_table_rows.append({"element": element_name, "device_name": device_name, "s": element_data['ele.s'][i], "length": element_data['ele.l'][i], "p0c": element_data['orbit.energy'][i],
-                               "alpha_x": element_data['ele.a.alpha'][i], "beta_x": element_data['ele.a.beta'][i], "eta_x": element_data['ele.a.eta'][i], "etap_x": element_data['ele.a.etap'][i], "psi_x": element_data['ele.a.phi'][i],
-                               "alpha_y": element_data['ele.b.alpha'][i], "beta_y": element_data['ele.b.beta'][i], "eta_y": element_data['ele.b.eta'][i], "etap_y": element_data['ele.b.etap'][i], "psi_y": element_data['ele.b.phi'][i]})
+                               "alpha_x": element_data['ele.a.alpha'][i], "beta_x": element_data['ele.a.beta'][i], "eta_x": element_data['ele.x.eta'][i], "etap_x": element_data['ele.x.etap'][i], "psi_x": element_data['ele.a.phi'][i],
+                               "alpha_y": element_data['ele.b.alpha'][i], "beta_y": element_data['ele.b.beta'][i], "eta_y": element_data['ele.y.eta'][i], "etap_y": element_data['ele.y.etap'][i], "psi_y": element_data['ele.b.phi'][i]})
             rmat_table_rows.append({
                                "element": element_name, "device_name": device_name, "s": element_data['ele.s'][i], "length": element_data['ele.l'][i],
                                "r11": rmat[0,0], "r12": rmat[0,1], "r13": rmat[0,2], "r14": rmat[0,3], "r15": rmat[0,4], "r16": rmat[0,5],
