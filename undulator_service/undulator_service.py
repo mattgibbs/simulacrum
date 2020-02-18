@@ -86,37 +86,43 @@ class UndulatorPV(PVGroup):
         await ioc.kact.write(ioc.kdes.value)
         await self.change_callback(self, ioc.kact.value)  
 
-def convert_element_to_device(ele_name):
-    if ele_name.startswith('UMAHXH'):
-        unit =  ele_name.replace('UMAHXH','')
-        val = f'USEG:UNDH:{unit}50' 
-    elif ele_name.startswith('PSHXH'):
-        unit = ele_name.replace('PSHXH','')
-        val = f'PHAS:UNDH:{unit}95'
-    elif ele_name.startswith('LH_UND'):
-        unit = '466'
-        val = f'USEG:IN20:{unit}'
-    return val
+#def convert_element_to_device(ele_name):
+#    if ele_name.startswith('UMAHXH'):
+#        unit =  ele_name.replace('UMAHXH','')
+#        val = f'USEG:UNDH:{unit}50' 
+#    elif ele_name.startswith('PSHXH'):
+#        unit = ele_name.replace('PSHXH','')
+#        val = f'PHAS:UNDH:{unit}95'
+#    elif ele_name.startswith('UMASXH'):
+#        unit = ele_name.replace('UMASXH','')
+#        val = f'PHAS:UNDH:{unit}50'
+#    elif ele_name.startswith('PSHXH'):
+#        unit = ele_name.replace('PSSXH','')
+#        val = f'PHAS:UNDS:{unit}70'
+#    elif ele_name.startswith('LH_UND'):
+#        unit = '466'
+#        val = f'USEG:IN20:{unit}'
+#    return val
 
-def convert_device_to_element(device_name):
-    dev = device_name.split(':')
-    device = dev[0]
-    location = dev[1]
-    unit_number = dev[2][0:2]
-    
-    if device=='USEG':
-        if location=='IN20':
-            dev='LH_UND'
-        else:
-            dev='UMAHXH'
-    elif device=='PHAS':
-        dev='PSHXH'
-    return f'{dev}{unit_number}'
+#def convert_device_to_element(device_name):
+#    dev = device_name.split(':')
+#    device = dev[0]
+#    location = dev[1]
+#    unit_number = dev[2][0:2]
+#    
+#    if device=='USEG':
+#        if location=='IN20':
+#            dev='LH_UND'
+#        else:
+#            dev='UMAHXH'
+#    elif device=='PHAS':
+#        dev='PSHXH'
+#    return f'{dev}{unit_number}'
   
 def _parse_undulator_table(table):
-    splits = [row.split() for row in table] 
-    unds = {convert_element_to_device(ele_name): {"kact": und_B_max_to_Kact(float(b_max))} for (_, ele_name, _, _, l, b_max) in splits if 'UMAHX' in ele_name}
-    phas = {convert_element_to_device(ele_name): {"piact": B_max_to_PhaseIntegral(float(b_max))} for (_, ele_name, _, _, l, b_max) in splits if 'PSHXH' in ele_name}
+    splits = [row.split() for row in table if "#" not in row] 
+    unds = {simulacrum.util.convert_element_to_device(ele_name): {"kact": und_B_max_to_Kact(float(b_max))} for (_, ele_name, _, _, l, b_max) in splits if 'UMA' in ele_name}
+    phas = {simulacrum.util.convert_element_to_device(ele_name): {"piact": B_max_to_PhaseIntegral(float(b_max))} for (_, ele_name, _, _, l, b_max) in splits if 'PS' in ele_name}
     vals = dict(unds, **phas)
     return vals
 
@@ -156,16 +162,16 @@ class UndulatorService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         init_vals = self.get_initial_values()
-        undulator_element_list = self.get_undulator_list_from_model() 
-        undulator_device_list = [convert_element_to_device(element) for element in undulator_element_list]
+        undulator_element_list = self.get_undulator_list_from_model()
+        undulator_device_list = [simulacrum.util.convert_element_to_device(element) for element in undulator_element_list]
         for device_name in undulator_device_list:
             if device_name in init_vals:
                 initial_value=init_vals[device_name]
-                print(f'{device_name} {convert_device_to_element(device_name)} {initial_value}')
-        und_pvs = {device_name: UndulatorPV(device_name, convert_device_to_element(device_name), self.on_undulator_change, initial_values=init_vals[device_name], prefix=device_name) 
+                print(f'{device_name} {simulacrum.util.convert_device_to_element(device_name)} {initial_value}')
+        und_pvs = {device_name: UndulatorPV(device_name, simulacrum.util.convert_device_to_element(device_name), self.on_undulator_change, initial_values=init_vals[device_name], prefix=device_name) 
                     for device_name in undulator_device_list
                     if device_name in init_vals and device_name.startswith('USEG')}
-        phas_pvs = {device_name: phaseShifterPV(device_name, convert_device_to_element(device_name), self.on_undulator_change, initial_values=init_vals[device_name], prefix=device_name) 
+        phas_pvs = {device_name: phaseShifterPV(device_name, simulacrum.util.convert_device_to_element(device_name), self.on_undulator_change, initial_values=init_vals[device_name], prefix=device_name) 
                     for device_name in undulator_device_list
                     if device_name in init_vals and device_name.startswith('PHAS')}
         dev_name = 'USEG:IN20:466'
@@ -173,7 +179,7 @@ class UndulatorService(simulacrum.Service):
         laser_heater_pvs = {dev_name:  LaserHeaterUndulatorPV('USEG:IN20:466', 'LH_UND', self.on_heater_und_change,  initial_values=init_valsH , prefix=dev_name)}
         #laser_heater_pvs = {dev_name:  LaserHeaterUndulatorPV('USEG:IN20:466', 'LH_UND', self.on_undulator_change,  initial_values=init_valsH , prefix=dev_name)}
         print(laser_heater_pvs.keys())
-        print(phas_pvs.keys())
+        print(phas_pvs.keys()) 
         self.add_pvs(laser_heater_pvs)
         self.add_pvs(phas_pvs)
         self.add_pvs(und_pvs)
@@ -204,7 +210,7 @@ class UndulatorService(simulacrum.Service):
 
     def get_undulator_Kacts_from_model(self):
         init_vals = {}
-        for (attr, dev_list, parse_func) in [("B_MAX", "UMAHX*", _parse_undulator_table), ("B_MAX", "PSHX*", _parse_undulator_table)]:
+        for (attr, dev_list, parse_func) in [("B_MAX", "UMA*", _parse_undulator_table), ("B_MAX", "PS*", _parse_undulator_table)]:
             self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -attribute {attr} {list}".format(attr=attr, list=dev_list)})
 #        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "show lat -no_label_lines -no_slaves -attribute {attr} {list}".format(attr="B_MAX", list="UMAHX*")})
             table = self.cmd_socket.recv_pyobj()
