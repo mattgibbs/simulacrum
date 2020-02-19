@@ -401,23 +401,26 @@ class Bend:
             field_units = "GeV/c"
             b_field_tesla = ((-1.0 * 10**9 * b_field * self.g)/2.99792458e8)
         b_field_error =  b_field_tesla - self.b_init_tesla
-        L.debug("%s: Converted %f %s to %f T.  b_init = %f, b_err = %f", self.name, b_field, field_units, b_field_tesla, self.b_init_tesla, b_field_error)
+        L.debug("%s: Converted %f %s to %f T.  b_init = %f, b_err = %f", self.element_name, b_field, field_units, b_field_tesla, self.b_init_tesla, b_field_error)
         return b_field_error
     
     def convert_tesla_to_epics_units(self, b_field_tesla):
         if self.bend_type == "chicane":
             b_field_kgm = -10.0 * math.copysign(1, self.g) * b_field_tesla * self.l
         elif self.bend_type == "dogleg":
-            b_field_kgm = -1.0 * 2.99792458e8 * b_field_tesla / (self.g * 10**9)
+            if self.g == 0:
+              b_field_kgm = 0.0
+            else:
+              b_field_kgm = -1.0 * 2.99792458e8 * b_field_tesla / (self.g * 10**9)
         L.debug("%s: Converted %f T to %f kGm.  Length is %f", self.element_name, b_field_tesla, b_field_kgm, self.l)
         return b_field_kgm
     
     def set_field_strength_command(self, b_field):
         if self.bend_type == "chicane":
-            b_err = element.convert_to_b_field_err(b_field/self.l)
+            b_err = self.convert_to_b_field_err(b_field/self.l)
         elif self.bend_type == "dogleg":
-            b_err = element.convert_to_b_field_err(b_field)
-        return f"set ele {element.name} b_field_err = {b_err}"
+            b_err = self.convert_to_b_field_err(b_field)
+        return f"set ele {self.element_name} b_field_err = {b_err}"
     
     def make_pv(self, read_only, precision=None, upper_ctrl_limit=None, lower_ctrl_limit=None, change_callback=None):
         init_vals = {"bact": self.convert_tesla_to_epics_units(self.b_init_tesla), "units": self.unit}
