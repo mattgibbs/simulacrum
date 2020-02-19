@@ -408,7 +408,10 @@ class Bend:
         if self.bend_type == "chicane":
             b_field_kgm = -10.0 * math.copysign(1, self.g) * b_field_tesla * self.l
         elif self.bend_type == "dogleg":
-            b_field_kgm = -1.0 * 2.99792458e8 * b_field_tesla / (self.g * 10**9)
+            if self.g == 0:
+              b_field_kgm = 0.0
+            else:
+              b_field_kgm = -1.0 * 2.99792458e8 * b_field_tesla / (self.g * 10**9)
         L.debug("%s: Converted %f T to %f kGm.  Length is %f", self.element_name, b_field_tesla, b_field_kgm, self.l)
         return b_field_kgm
     
