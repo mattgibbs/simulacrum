@@ -13,6 +13,7 @@
 #
 # You can also create waveform PVs by specifying an array as the initial value:
 #MY:ARRAY float [0.1, 1.2, 2.3]
+#TODO LemServer EDES PVS initialze from lattice file
 QUAD:IN20:361:BMAGX float 0
 QUAD:IN20:361:BMAGY float 0
 QUAD:IN20:371:BMAGX float 0
@@ -369,7 +370,7 @@ ACCL:LI21:180:EGLEM float 1
 ACCL:IN20:300:CHLEM float 1
 ACCL:IN20:400:CHLEM float 1
 ACCL:LI21:180:CHLEM float 1
-REFS:DMPS:400:EDES float 1
+REFS:DMPS:400:EDES float 8
 ACCL:LI29:0:A_SUM float 1
 ACCL:LI30:0:A_SUM float 1
 ACCL:IN20:350:EG_SUM float 1
@@ -686,7 +687,7 @@ REFS:IN20:231:EDES float 0.006
 REFS:IN20:751:EDES float 0.22
 REFS:LI21:231:EDES float 0.135
 REFS:LI24:790:EDES float 5.0
-REFS:DMPH:400:EDES float 13.64
+REFS:DMPH:400:EDES float 8
 PATT:SYS0:1:POCKCNTMAX int 50
 PATT:SYS0:1:POCKCTRL int 1
 OTRS:IN20:571:FIT_METHOD str RMS cut area
