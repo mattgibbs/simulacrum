@@ -230,8 +230,8 @@ class UndulatorService(simulacrum.Service):
         L.info('Updated {}.'.format(undulator_pv.device_name))
 
     async def on_heater_und_change(self, undulator_pv, value):
-        val = Kact_to_heater_b_max(value)
-        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele LH_UND BMAX = {val}".format(val)})
+        b_max = Kact_to_heater_b_max(value)
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele LH_UND B_MAX = {bmax}".format(bmax=b_max)})
         self.cmd_socket.recv_pyobj()
         L.info('Updated {}.'.format(undulator_pv.device_name))
 
