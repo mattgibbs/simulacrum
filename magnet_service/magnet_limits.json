@@ -11001,10 +11001,10 @@
 	},
 	"BEND:LTUS:175": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 6.8,
+		"EGU": "GeV/c",
+		"DRVH": 15.815,
 		"DRVL": 0.0,
-		"HOPR": 6.8,
+		"HOPR": 15.815,
 		"LOPR": 0.0
 	},
 	"QUAD:LTUS:180": {
@@ -11145,10 +11145,10 @@
 	},
 	"BEND:LTUS:460": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 6.8,
+		"EGU": "GeV/c",
+		"DRVH": 15.7673,
 		"DRVL": 0.0,
-		"HOPR": 6.8,
+		"HOPR": 15.7673,
 		"LOPR": 0.0
 	},
 	"QUAD:LTUS:470": {
@@ -11233,10 +11233,10 @@
 	},
 	"BEND:LTUS:525": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 0.86,
+		"EGU": "GeV/C",
+		"DRVH": 19.6686,
 		"DRVL": 0.0,
-		"HOPR": 0.86,
+		"HOPR": 19.6686,
 		"LOPR": 0.0
 	},
 	"QUAD:LTUS:540": {
@@ -11289,10 +11289,10 @@
 	},
 	"BEND:LTUS:565": {
 		"PREC": 7,
-		"EGU": "kG-m",
-		"DRVH": 0.86,
+		"EGU": "GeV/c",
+		"DRVH": 19.7137,
 		"DRVL": 0.0,
-		"HOPR": 0.86,
+		"HOPR": 19.7137,
 		"LOPR": 0.0
 	},
 	"XCOR:LTUS:568": {
@@ -13127,6 +13127,22 @@
 		"HOPR": 0.12,
 		"LOPR": -0.12
 	},
+	"QUAD:DMPS:300": {
+		"PREC": 7,
+		"EGU": "kG",
+		"DRVH": 0.0,
+		"DRVL": -51.1632,
+		"HOPR": 0.0,
+		"LOPR": -51.1632
+	},
+	"QUAD:DMPS:380": {
+		"PREC": 7,
+		"EGU": "kG",
+		"DRVH": 52.0553,
+		"DRVL": 0.0,
+		"HOPR": 52.0553,
+		"LOPR": 0.0
+	},
 	"BEND:DMPS:399": {
 		"PREC": 7,
 		"EGU": "kG-m",
@@ -13170,18 +13186,18 @@
 	"QUAD:DMPS:500": {
 		"PREC": 7,
 		"EGU": "kG",
-		"DRVH": 24.45,
-		"DRVL": 0.0,
-		"HOPR": 24.45,
-		"LOPR": 0.0
+		"DRVH": 0.0,
+		"DRVL": -38.58,
+		"HOPR": 0.0,
+		"LOPR": -38.58
 	},
 	"QUAD:DMPS:600": {
 		"PREC": 7,
 		"EGU": "kG",
-		"DRVH": 24.45,
-		"DRVL": 0.0,
-		"HOPR": 24.45,
-		"LOPR": 0.0
+		"DRVH": 0.0,
+		"DRVL": -38.5868,
+		"HOPR": 0.0,
+		"LOPR": -38.5868
 	},
 	"XCOR:DMPS:602": {
 		"PREC": 7,
