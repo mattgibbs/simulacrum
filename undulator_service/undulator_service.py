@@ -1,6 +1,8 @@
 import numpy as np
 import sys
 import os
+from scipy.interpolate import CubicSpline
+from scipy.io import loadmat
 import asyncio
 from collections import OrderedDict
 from caproto.server import ioc_arg_parser, run, pvproperty, PVGroup
@@ -86,38 +88,6 @@ class UndulatorPV(PVGroup):
         await ioc.kact.write(ioc.kdes.value)
         await self.change_callback(self, ioc.kact.value)  
 
-#def convert_element_to_device(ele_name):
-#    if ele_name.startswith('UMAHXH'):
-#        unit =  ele_name.replace('UMAHXH','')
-#        val = f'USEG:UNDH:{unit}50' 
-#    elif ele_name.startswith('PSHXH'):
-#        unit = ele_name.replace('PSHXH','')
-#        val = f'PHAS:UNDH:{unit}95'
-#    elif ele_name.startswith('UMASXH'):
-#        unit = ele_name.replace('UMASXH','')
-#        val = f'PHAS:UNDH:{unit}50'
-#    elif ele_name.startswith('PSHXH'):
-#        unit = ele_name.replace('PSSXH','')
-#        val = f'PHAS:UNDS:{unit}70'
-#    elif ele_name.startswith('LH_UND'):
-#        unit = '466'
-#        val = f'USEG:IN20:{unit}'
-#    return val
-
-#def convert_device_to_element(device_name):
-#    dev = device_name.split(':')
-#    device = dev[0]
-#    location = dev[1]
-#    unit_number = dev[2][0:2]
-#    
-#    if device=='USEG':
-#        if location=='IN20':
-#            dev='LH_UND'
-#        else:
-#            dev='UMAHXH'
-#    elif device=='PHAS':
-#        dev='PSHXH'
-#    return f'{dev}{unit_number}'
   
 def _parse_undulator_table(table):
     splits = [row.split() for row in table if "#" not in row] 
@@ -152,6 +122,51 @@ def PhaseIntegral_to_und_B_max(phaseIntegral):
     pshx_L        = 0.0495 # m 
     b_max = 2*np.pi / pshx_L_period * np.sqrt(2 * phaseIntegral / pshx_L  )
     return b_max
+
+def get_bpm_offset_form_gap(gap):
+    return  -0.002850/gap**3;
+
+def get_bpm_element_from_useg(usegElement):
+    unit = usegElement[-2:]
+    beamLine = usegElement[3]
+    return 'RFB' + beamLine + 'X' + unit
+
+#TODO:
+#The maximum BPM  movements when changing the gaps from fully open to fully closed would then be (as a function of cell):
+#Cell13: dx~+0.9 microns, dy~-6.6 microns
+#Cell14: dx~+1.0 microns, dy~-7.5 microns
+#Cell15: dx~+1.3 microns, dy~-9.4 microns
+#Cell16: dx~+0.9 microns, dy~-6.6 microns
+
+def get_undulator_gap_from_K(element, valueK):
+    try:
+        get_undulator_gap_from_K.timesUsed += 1
+    except AttributeError:
+        ul = {}
+        print('Loading /mccfs2/u1/lcls/matlab/ULT_GuiData/UL.mat data...')
+        loadmat('/mccfs2/u1/lcls/matlab/ULT_GuiData/UL', ul, True, variable_names= 'ul')
+        get_undulator_gap_from_K.timesUsed = 1
+
+    beamLineIndx = 0 if 'UMAH' in element else 1
+    useg = ul['ul'][beamLineIndx]['SplineData'][0]['USEG'][0][0][0]
+    for indx in range(1,useg.size):
+        try:
+            usegIndx = indx if useg[indx][0][0][7][0][0][6][0] == element else -1
+            if usegIndx>0:
+                break
+        except:
+            pass
+    if usegIndx <0:
+        print(f'Failed to find {element}')
+        return 0
+
+    (SerialNumber,  Dataset, MMFtemp, MMFtemp_unit, gap_unit, K_unit, inFileDate, Rundate, SN,gap, K) = useg[usegIndx][0][0][0][0][0] 
+    K = K.squeeze()[::-1] 
+    gap = gap.squeeze()[::-1]
+    cs = CubicSpline(K,gap)
+    return cs(valueK)
+
+
 
 class UndulatorService(simulacrum.Service):
     conversion_to_BMAD_for_und_type = {"USEG": Kact_to_und_B_max, "PHAS": PhaseIntegral_to_und_B_max}
@@ -217,7 +232,7 @@ class UndulatorService(simulacrum.Service):
             init_vals.update(_parse_undulator_table(table['result']))
         return init_vals
 
-    async def on_undulator_change(self, undulator_pv, value):
+    async def on_undulator_change(self, undulator_pv, valueK): 
         und_type = undulator_pv.device_name.split(":")[0]
         und_attr = 'B_MAX' 
         conv = self.conversion_to_BMAD_for_und_type[und_type]
@@ -225,12 +240,20 @@ class UndulatorService(simulacrum.Service):
         L.debug('Updating {}... '.format( undulator_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} {attr} = {val}".format(element=undulator_pv.element_name, 
                                                                                                    attr=und_attr,
-                                                                                                   val=conv(value))})
+                                                                                                   val=conv(valueK))})
         self.cmd_socket.recv_pyobj()
+        #Update BPM offsets when K changes see gapFromK.py
+        gap =  get_undulator_gap_from_K(undulator_pv.element_name, valueK)
+        bpm_yOffset = get_bpm_offset_form_gap(gap)
+        bpm_element = get_bpm_element_from_useg(undulator_pv.element_name)
+        self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele {element} y_offset = {val}".format(element=bpm_element,  val=bpm_yOffset)})
+        self.cmd_socket.recv_pyobj()
+
         L.info('Updated {}.'.format(undulator_pv.device_name))
 
     async def on_heater_und_change(self, undulator_pv, value):
         b_max = Kact_to_heater_b_max(value)
+        L.debug('Updating {}... '.format( undulator_pv.device_name ) )
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set ele LH_UND B_MAX = {bmax}".format(bmax=b_max)})
         self.cmd_socket.recv_pyobj()
         L.info('Updated {}.'.format(undulator_pv.device_name))
