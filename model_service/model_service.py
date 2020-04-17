@@ -175,17 +175,14 @@ class ModelService:
                 except Exception as e:
                     L.warning("SEND ORBIT FAILED: %s", e)
                 try:
-                    self.send_profiles_twiss()
+                    self.send_profiles_data()
                 except Exception as e:
-                    L.warning("SEND PROFILES TWISS FAILED: %s", e)
-                try:
-                    self.send_prof_orbit()
-                except Exception as e:
-                    L.warning("SEND PROF ORBIT FAILED: %s", e)
+                    L.warning("SEND PROF DATA FAILED: %s", e)
                 try:
                     self.send_und_twiss()
                 except Exception as e:
                     L.warning("SEND UND TWISS FAILED: %s", e)
+
                 self.need_zmq_broadcast = False
             await asyncio.sleep(0.1)
     
@@ -249,18 +246,40 @@ class ModelService:
         self.model_broadcast_socket.send_pyobj(metadata, zmq.SNDMORE)
         self.model_broadcast_socket.send(orb)
 
-    def send_prof_orbit(self):
-        orb = self.get_prof_orbit()
-        metadata = {"tag" : "prof_orbit", "dtype": str(orb.dtype), "shape": orb.shape}
-        self.model_broadcast_socket.send_pyobj(metadata, zmq.SNDMORE)
-        self.model_broadcast_socket.send(orb)
+    def send_profiles_data(self):
+        twiss_text = self.tao_cmd("show lat -no_label_lines -at beta_a -at beta_b -at e_tot Instrument::OTR*,Instrument::YAG*")
+        prof_beta_x = [float(l.split()[5]) for l in twiss_text]
+        prof_beta_y = [float(l.split()[6]) for l in twiss_text]
+        prof_e = [float(l.split()[7]) for l in twiss_text]
+        prof_names = [l.split()[1] for l in twiss_text]
+        prof_orbit = self.get_prof_orbit()
+        prof_data = np.concatenate((prof_orbit, np.array([prof_beta_x, prof_beta_y, prof_e,  prof_names])))
 
-    def send_profiles_twiss(self):
-        twiss_text = np.asarray(self.tao_cmd("show lat -at beta_a -at beta_b Instrument::OTR*,Instrument::YAG*"))
-        metadata = {"tag" : "prof_twiss", "dtype": str(twiss_text.dtype), "shape": twiss_text.shape}
+        metadata = {"tag" : "prof_data", "dtype": str(prof_data.dtype), "shape": prof_data.shape}
         self.model_broadcast_socket.send_pyobj(metadata, zmq.SNDMORE)
-        self.model_broadcast_socket.send(np.stack(twiss_text));        
-           
+        self.model_broadcast_socket.send(prof_data);
+
+    def send_particle_positions(self):
+        twiss_text = self.tao_cmd("show lat -no_label_lines -at beta_a -at beta_b -at e_tot Instrument::OTR*,Instrument::YAG*")
+        prof_names = [l.split()[1] for l in twiss_text]
+        positions_all = {}
+        for screen in prof_names:
+            positions = self.get_particle_positions(screen);
+            if not positions:
+                continue
+            positions_all[screen] = [[float(position.split()[1]), float(position.split()[3])] for position in positions]
+        metadata = {"tag": "part_positions"}
+        self.model_broadcast_socket.send_pyobj(metadata, zmq.SNDMORE)
+        self.model_broadcast_socket.send_pyobj(positions_all)
+
+    def get_particle_positions(self, screen):
+        L.debug("Getting particle positions")
+        cmd = "show particle -all -ele {screen}".format(screen=screen)
+        results = self.tao_cmd(cmd);
+        if(len(results) < 3):
+            return False
+        return results[2:]
+
     def send_und_twiss(self):
         twiss = self.get_twiss()
         metadata = {"tag": "und_twiss"}
