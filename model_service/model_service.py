@@ -182,10 +182,6 @@ class ModelService:
                     self.send_und_twiss()
                 except Exception as e:
                     L.warning("SEND UND TWISS FAILED: %s", e)
-                #try:
-                #    self.send_particle_positions()
-                #except Exception as e:
-                #    L.warning("SEND PARTICLE POSITIONS FAILED %s", e)
 
                 self.need_zmq_broadcast = False
             await asyncio.sleep(0.1)
