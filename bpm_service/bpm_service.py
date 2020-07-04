@@ -13,11 +13,11 @@ L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0
 
 
 class BPMPV(PVGroup):
-    x = pvproperty(value=0.0, name=':X', read_only=True, mock_record='ai',
-                   upper_disp_limit=3.0, lower_disp_limit=-3.0, precision=4, units='mm')
-    y = pvproperty(value=0.0, name=':Y', read_only=True, mock_record='ai',
-                   upper_disp_limit=3.0, lower_disp_limit=-3.0, precision=4, units='mm')
-    tmit = pvproperty(value=0.0, name=':TMIT', read_only=True, mock_record='ai',
+    x = pvproperty(value=0.0, name=':X', read_only=True, record='ai',
+                   upper_disp_limit=3.0, lower_disp_limit=-3.0, precision=4, units='mm', upper_alarm_limit=5.0, lower_alarm_limit=-5.0)
+    y = pvproperty(value=0.0, name=':Y', read_only=True, record='ai',
+                   upper_disp_limit=3.0, lower_disp_limit=-3.0, precision=4, units='mm', upper_alarm_limit=5.0, lower_alarm_limit=-5.0)
+    tmit = pvproperty(value=0.0, name=':TMIT', read_only=True, record='ai',
                    upper_disp_limit=1.0e10, lower_disp_limit=0)
     z = pvproperty(value=0.0, name=':Z', read_only=True, precision=2, units='m')
     
