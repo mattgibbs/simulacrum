@@ -222,8 +222,8 @@ class ModelService:
         if "ERROR" in twiss_text[0]:
             twiss_text = self.tao_cmd("show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b BEGUNDS")
         #format to list of comma separated values
-        msg='twiss from get_twiss: {}'.format(twiss_text)
-        L.info(msg)
+        #msg='twiss from get_twiss: {}'.format(twiss_text)
+        #L.info(msg)
         twiss = twiss_text[0].split()
         return twiss
 
