@@ -67,10 +67,12 @@ class BPMService(simulacrum.Service):
     
     async def publish_z(self):
         L.info("Publishing Z PVs")
+        write_ops = []
         for row in self.orbit:
             zpv = row['device_name']+":Z"
             if zpv in self:
-                await self[zpv].write(row['z'])
+                write_ops.append(self[zpv].write(row['z']))
+        asyncio.gather(*write_ops)
     
     def request_orbit(self):
         self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
@@ -102,15 +104,17 @@ class BPMService(simulacrum.Service):
                  
             
     async def publish_orbit(self):
+        write_ops = []
         for row in self.orbit:
             if row['device_name']+":X" in self:
                 if not row['alive']:
                     severity = AlarmSeverity.INVALID_ALARM
                 else:
                     severity = AlarmSeverity.NO_ALARM
-                await self[row['device_name']+":X"].write(row['x'], severity=severity)
-                await self[row['device_name']+":Y"].write(row['y'], severity=severity)
-                await self[row['device_name']+":TMIT"].write(row['tmit'])
+                write_ops.append(self[row['device_name']+":X"].write(row['x'], severity=severity))
+                write_ops.append(self[row['device_name']+":Y"].write(row['y'], severity=severity))
+                write_ops.append(self[row['device_name']+":TMIT"].write(row['tmit']))
+        asyncio.gather(*write_ops)
     
 def main():
     service = BPMService()
