@@ -1,6 +1,7 @@
 #last edited by J.Shtalenkova on 2.19.2019
 
 import os
+import sys
 import asyncio
 import numpy as np
 from collections import OrderedDict
@@ -9,6 +10,9 @@ from caproto import ChannelType
 import simulacrum
 import zmq
 from zmq.asyncio import Context
+
+#set up python logger
+L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 #---------------------------------------STOPPERS--------------------------------------------#
 class StopperPV(PVGroup):
@@ -40,7 +44,7 @@ class StopperPV(PVGroup):
             await ioc.sts.write(1)
             self.change_callback(self, 1)
         else:
-            print("Warning, using a non-implemented stopper control function.")
+            L.warning("Warning, using a non-implemented stopper control function.")
         return self.ctrl_strings.index(value)
 
 
@@ -49,16 +53,16 @@ class StopperPV(PVGroup):
 # 'left' and 'right' jaw nomenclature used for all stoppers; vertical stoppers 'left'==bottom, 'right'==top; 'left' jaw takes on negative values, 'right' jaw - positive
 class CollimatorPV(PVGroup):
 
-    setgap = pvproperty(value=0.0, name=':SETGAP')
-    getgap = pvproperty(value=0.0, name=':GETGAP', read_only=True)
-    setcenter = pvproperty(value=0.0, name=':SETCENTER')
+    setgap = pvproperty(value=0.0, name=':SETGAP', units="mm", precision=2)
+    getgap = pvproperty(value=0.0, name=':GETGAP', read_only=True, units="mm", precision=2)
+    setcenter = pvproperty(value=0.0, name=':SETCENTER', units="mm", precision=2)
     getcenter = pvproperty(value=0.0, name=':GETCENTER', read_only=True)
     
-    setleft = pvproperty(value=0.0, name=':SETLEFT')
-    getleft = pvproperty(value=0.0, name=':GETLEFT', read_only=True)
+    setleft = pvproperty(value=0.0, name=':SETLEFT', units="mm", precision=2)
+    getleft = pvproperty(value=0.0, name=':GETLEFT', read_only=True, units="mm", precision=2)
     
-    setright = pvproperty(value=0.0, name=':SETRIGHT')
-    getright = pvproperty(value=0.0, name=':GETRIGHT', read_only=True)
+    setright = pvproperty(value=0.0, name=':SETRIGHT', units="mm", precision=2)
+    getright = pvproperty(value=0.0, name=':GETRIGHT', read_only=True, units="mm", precision=2)
 
     @staticmethod
     def calc_coll(left, right):
@@ -134,16 +138,19 @@ class CollimatorPV(PVGroup):
         c_diff = ioc.getcenter.value - value
         #write value to getgap
         await ioc.getcenter.write(value)
-        #set new left jaw 
-        self.setleft._data['value']  = ioc.getleft.value - c_diff 
-        self.getleft._data['value']  = self.setleft._data['value'] 
+        #set new left jaw
+        self.setleft._data['value']  = ioc.getleft.value - c_diff
+        self.getleft._data['value']  = self.setleft._data['value']
         #set new right jaw
-        self.setright._data['value']  = ioc.getright.value - c_diff 
+        self.setright._data['value']  = ioc.getright.value - c_diff
         self.getright._data['value']  = self.setright._data['value']
+        #broadcast left/right jaw changes
+        await asyncio.gather(self.getleft.publish(0), self.getright.publish(0))
+        
         #update model
         val = [ioc.getleft.value, ioc.getright.value]
         self.change_callback(self, val)
-        return value 
+        return value
 
 
     @setgap.putter
@@ -155,9 +162,10 @@ class CollimatorPV(PVGroup):
         self.getleft._data['value'] = self.setleft._data['value']
         self.setright._data['value'] = ioc.getright.value - (g_diff/2)
         self.getright._data['value'] = self.setright._data['value']
+        await asyncio.gather(self.getleft.publish(0), self.getright.publish(0))
         val = [ioc.getleft.value, ioc.getright.value]
         self.change_callback(self, val)
-        return value 
+        return value
 
 
 #----------------------------------------PROFILE MONITORS--------------------------------------------#
@@ -181,12 +189,12 @@ class ObstructorService(simulacrum.Service):
 
     def recv_pytao():
         for line in self.cmd_socket.recv_pyobj()['result']:
-            print(line)
+            L.info(line)
     #initialize service
     def __init__(self):
         super().__init__()
         #name converters 
-        self.stopper_names = {'TD11':'DUMP:LI21:305', 'TDUND':'DUMP:LTU1:970'} 
+        self.stopper_names = {'TD11':'DUMP:LI21:305', 'TDUND':'DUMP:LTUH:970'} 
         self.screen_names =  {'YAG02':'YAGS:IN20:241'}
         self.x_collimator_names = {'CE11': 'COLL:LI21:235'}
         self.y_collimator_names = {}
@@ -224,7 +232,7 @@ class ObstructorService(simulacrum.Service):
    
 # !!!   #create screen PVs    
     
-        print("Initialization complete.")
+        L.info("Initialization complete.")
     
     #obtain status target status values from model 
     def get_obstruct_statuses_from_model(self):
@@ -298,35 +306,34 @@ class ObstructorService(simulacrum.Service):
     def on_obstructor_change(self, pv, value):
         #define obstructor object type
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set global lattice_calc_on=F"})
-        print(self.cmd_socket.recv_pyobj())
-        print('Obstructor changing...')
-        print('PV', pv)
-        print('PV device, PV element: ', pv.device_name, pv.element_name)
-        print(pv.element_name in self.stopper_names.keys())
+        msg = self.cmd_socket.recv_pyobj()['result']
+        L.info(msg)
+        L.info('Obstructor changing...')
+        msg = 'PV: {}'.format(pv)
+        L.info(msg)
+        msg='PV device, PV element: {} {}'.format( pv.device_name, pv.element_name)
+        L.debug(msg)
         if pv.element_name in self.stopper_names.keys():
-            print('I am a stopper...')
+            #print('I am a stopper...')
             self.on_stopper_change(pv, value)
-            print('My limits are ', self.lim )
+            #print('My limits are ', self.lim )
         elif pv.element_name in self.x_collimator_names.keys() or pv.element_name in self.y_collimator_names.keys() and type(value)==list:
-            print('I am a collimator...')
+            #print('I am a collimator...')
             self.on_collimator_change(pv, value)
-            print('My limits are ', self.lim )
+            #print('My limits are ', self.lim )
         else:
-            print('Warning, using a non-implemented control function....')
+            L.warning('Warning, using a non-implemented control function....')
 
     #build and send tao command
         for i in range(len(self.limit_names)):
-            print()
             command = 'set ele {element} {attr}={val}'.format(element=pv.element_name, attr=self.limit_names[i], val=self.lim[i])
             self.cmd_socket.send_pyobj({"cmd": "tao", "val": command})
-            print(self.cmd_socket.recv_pyobj())
-
+            msg=self.cmd_socket.recv_pyobj()['result']
+            L.info(msg)
         #restart global computation
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": "set global lattice_calc_on=T"})
-        #update orbit?
-        print(self.cmd_socket.recv_pyobj())
-        self.cmd_socket.send_pyobj({"cmd": "send_orbit"})
-        print(self.cmd_socket.recv_pyobj())
+        msg = self.cmd_socket.recv_pyobj()['result']
+        L.info(msg)
     
 
 
