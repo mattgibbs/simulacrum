@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 import numpy as np
 from caproto.server import ioc_arg_parser, run, pvproperty, PVGroup
@@ -7,6 +8,9 @@ import zmq
 import time
 from zmq.asyncio import Context
 import pickle
+
+#set up python logger
+L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class ProfMonService(simulacrum.Service):
     default_image_dim = 1024
@@ -19,10 +23,10 @@ class ProfMonService(simulacrum.Service):
                 'EVR:UND1:PM01:CTRL.DG0E', 'EVR:IN20:PM01:CTRL.DG1E', 'YAGS:IN20:841:FRAME_RATE', 
                 'YAGS:IN20:351:FRAME_RATE', 'OTRS:IN20:541:FRAME_RATE', 'OTRS:IN20:621:FRAME_RATE',
                 'YAGS:IN20:921:FRAME_RATE', 'OTRS:LI21:291:FRAME_RATE', 'OTRS:LI25:342:FRAME_RATE', 
-                'CTHD:IN20:206:FRAME_RATE', 'SIOC:SYS0:ML02:AO000'] #last one not strictly necessary but speeds up matlab init
+                'CTHD:IN20:206:FRAME_RATE', 'OTRS:DMPH:695:Acquire','SIOC:SYS0:ML02:AO000'] #last one not strictly necessary but speeds up matlab init
 
     def __init__(self):
-        print('Initializing PVs')
+        L.info('Initializing PVs')
         super().__init__()
 
         #load Profmon properties from file
@@ -62,7 +66,8 @@ class ProfMonService(simulacrum.Service):
                             for i in range(0, len(screenProps['props'])) if screenProps['props'][i]
                         }
             except IndexError:
-                print(screen + ' has an invalid device name')
+                msg = '{} has an invalid device name'.format(screen)
+                L.info(msg)
                 return None
             pvProps.update({'acquire': acquire, 'frame_rate': frame_rate, 'buf_idx': buf_idx, 'img_save': img_save, 'image': image})
             return type(screenProps['device_name'], (PVGroup,), pvProps)
@@ -75,7 +80,7 @@ class ProfMonService(simulacrum.Service):
         util_pvs = {} 
 
         for screen in self.profiles:
-            print('PV: ' + screen + ' ' + self.dev2ele[screen])
+            msg='PV: {} {}'.format(screen, self.dev2ele[screen])
             ProfClass = ProfMonPVClassMaker(self.profiles[screen]['props'])
             if(ProfClass):
                 screen_pvs[screen] = ProfClass(prefix = screen)
@@ -93,7 +98,7 @@ class ProfMonService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         
-        print("Initialization complete.")
+        L.info("Initialization complete.")
 
     def request_profiles(self):
         self.cmd_socket.send_pyobj({"cmd": "send_profiles_twiss"})
@@ -105,39 +110,49 @@ class ProfMonService(simulacrum.Service):
         model_broadcast_socket.connect('tcp://127.0.0.1:{}'.format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         model_broadcast_socket.setsockopt(zmq.SUBSCRIBE, b'')
         while True:
-            print("Checking for new profile data.")
+            L.info("Checking for new profile data.")
             md = await model_broadcast_socket.recv_pyobj(flags=flags)
-            print("Profile data incoming: ", md)
-            if md.get("tag", None) == "prof_twiss":
+            L.info(md.get("tag", None))
+            if md.get("tag", None) == "prof_data":
+                msg ="Profile data incoming: {}".format(md)
                 msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
                 buf = memoryview(msg)
                 A = np.frombuffer(buf, dtype=md['dtype'])
-                result = A.reshape(md['shape'])[3:-3]
-            else:
-                await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+                result = np.rot90(A.reshape(md['shape']))
+                for i in range(result.shape[0]):
+                    orbit_x, orbit_y, beta_a, beta_b, name  = result[i]
+                    devName = self.ele2dev[name]
+                    if devName not in self.profiles:
+                        continue
+                    #CGI
+                    beamProps = {'beta_a': float(beta_a), 'beta_b': float(beta_b), 'x': float(orbit_x), 'y': float(orbit_y)}
+                    image = self.gen_beam_image(beamProps, self.profiles[devName]['props']['values'], smooth=False)
+                    self.profiles[devName]['image'] = image.tolist()
+
+            else: 
+                md = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
                 
-
-            print("Checking for new profile orbits.")
-            md = await model_broadcast_socket.recv_pyobj(flags=flags)
-            print("Profile orbit incoming: ", md)
-            if md.get("tag", None) == "prof_orbit":
-                msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
-                buf = memoryview(msg)
-                A = np.frombuffer(buf, dtype=md['dtype'])
-                orbit = A.reshape(md['shape'])
-            else:
-                await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
-        
-            for i, row in enumerate(result):
-                ( _, name, _, _, _, beta_a, beta_b) = row.split()
-                devName = self.ele2dev[name]
-                if devName not in self.profiles:
-                    continue
-
+           # L.info("Checking for new profile orbits.")
+           # md = await model_broadcast_socket.recv_pyobj(flags=flags)            
+           # if md.get("tag", None) == "prof_orbit":
+           #     msg="Profile orbit incoming: {}".format( md)
+           #     L.info(msg)
+           #     msg = await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+           #     buf = memoryview(msg)
+           #     A = np.frombuffer(buf, dtype=md['dtype'])
+           #     orbit = A.reshape(md['shape'])
+           # else:
+           #     await model_broadcast_socket.recv(flags=flags, copy=copy, track=track)
+            
+            
+               #devName = self.ele2dev[name]
+                #if devName not in self.profiles:
+                #    continue
                 #CGI
-                beamProps = {'beta_a': float(beta_a), 'beta_b': float(beta_b), 'x': orbit[0][i], 'y': orbit[1][i]}
-                image = self.gen_beam_image(beamProps, self.profiles[devName]['props']['values'], smooth=False)
-                self.profiles[devName]['image'] = image.tolist()
+                #beamProps = {'beta_a': float(beta_a), 'beta_b': float(beta_b), 'x': orbit[0][i], 'y': orbit[1][i]}
+                #image = self.gen_beam_image(beamProps, self.profiles[devName]['props']['values'], smooth=False)
+                #self.profiles[devName]['image'] = image.tolist()
+            
             await self.publish_profiles()
 
     async def publish_profiles(self):
@@ -198,7 +213,7 @@ class ProfMonService(simulacrum.Service):
                 py = np.random.normal(0, sig_y, n_part)
                 x = np.append(x - 0.5, x[-1]+0.5)
                 y = np.append(y - 0.5, y[-1]+0.5)
-                (h, _,_) = np.histogram2d(py, px, bins = (y, x)) 
+                (h, _,_) = np.histogram2d(py, px, bins = (y, x))
                 img = intensity/n_part*h
         img = img.astype(np.uint8) if bit_depth <= 8 else img.astype(np.uint16) 
         img_flat = np.minimum(img.ravel(), 2**bit_depth - 1) 
