@@ -33,11 +33,11 @@ class ModelService:
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         self.loop = asyncio.get_event_loop()
         self.jitter_enabled = enable_jitter
-        twiss_table = NTTable([("element", "s"), ("device_name", "s"),
+        self.twiss_table = NTTable([("element", "s"), ("device_name", "s"),
                                        ("s", "d"), ("length", "d"), ("p0c", "d"),
                                        ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"), ("psi_x", "d"),
                                        ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d"), ("psi_y", "d")])
-        rmat_table = NTTable([("element", "s"), ("device_name", "s"), ("s", "d"), ("length", "d"),
+        self.rmat_table = NTTable([("element", "s"), ("device_name", "s"), ("s", "d"), ("length", "d"),
                               ("r11", "d"), ("r12", "d"), ("r13", "d"), ("r14", "d"), ("r15", "d"), ("r16", "d"),
                               ("r21", "d"), ("r22", "d"), ("r23", "d"), ("r24", "d"), ("r25", "d"), ("r26", "d"),
                               ("r31", "d"), ("r32", "d"), ("r33", "d"), ("r34", "d"), ("r35", "d"), ("r36", "d"),
@@ -45,16 +45,23 @@ class ModelService:
                               ("r51", "d"), ("r52", "d"), ("r53", "d"), ("r54", "d"), ("r55", "d"), ("r56", "d"),
                               ("r61", "d"), ("r62", "d"), ("r63", "d"), ("r64", "d"), ("r65", "d"), ("r66", "d")])
         initial_twiss_table, initial_rmat_table = self.get_twiss_table()
-        self.live_twiss_pv = SharedPV(nt=twiss_table, 
+        sec, nanosec = divmod(float(time.time()), 1.0)
+        initial_twiss_table = self.twiss_table.wrap(initial_twiss_table)
+        initial_twiss_table['timeStamp']['secondsPastEpoch'] = sec
+        initial_twiss_table['timeStamp']['nanoseconds'] = nanosec
+        initial_rmat_table = self.rmat_table.wrap(initial_rmat_table)
+        initial_rmat_table['timeStamp']['secondsPastEpoch'] = sec
+        initial_rmat_table['timeStamp']['nanoseconds'] = nanosec
+        self.live_twiss_pv = SharedPV(nt=self.twiss_table, 
                            initial=initial_twiss_table,
                            loop=self.loop)
-        self.design_twiss_pv = SharedPV(nt=twiss_table, 
+        self.design_twiss_pv = SharedPV(nt=self.twiss_table, 
                            initial=initial_twiss_table,
                            loop=self.loop)
-        self.live_rmat_pv = SharedPV(nt=rmat_table, 
+        self.live_rmat_pv = SharedPV(nt=self.rmat_table, 
                            initial=initial_rmat_table,
                            loop=self.loop)
-        self.design_rmat_pv = SharedPV(nt=rmat_table, 
+        self.design_rmat_pv = SharedPV(nt=self.rmat_table, 
                            initial=initial_rmat_table,
                            loop=self.loop)
         self.recalc_needed = False
@@ -143,9 +150,16 @@ class ModelService:
         """
         while True:
             if self.pva_needs_refresh:
-                twiss_table, rmat_table = self.get_twiss_table()
-                self.live_twiss_pv.post(twiss_table)
-                self.live_rmat_pv.post(rmat_table)
+                sec, nanosec = divmod(float(time.time()), 1.0)
+                new_twiss_table, new_rmat_table = self.get_twiss_table()
+                new_twiss_table = self.twiss_table.wrap(new_twiss_table)
+                new_twiss_table['timeStamp']['secondsPastEpoch'] = sec
+                new_twiss_table['timeStamp']['nanoseconds'] = nanosec
+                new_rmat_table = self.rmat_table.wrap(new_rmat_table)
+                new_rmat_table['timeStamp']['secondsPastEpoch'] = sec
+                new_rmat_table['timeStamp']['nanoseconds'] = nanosec
+                self.live_twiss_pv.post(new_twiss_table)
+                self.live_rmat_pv.post(new_rmat_table)
                 self.pva_needs_refresh = False
             await asyncio.sleep(1.0)
         
