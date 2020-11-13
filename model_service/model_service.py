@@ -28,6 +28,7 @@ class ModelService:
         self.tao.init("-noplot -init {init_file}".format(init_file=init_file))
         L.debug("Tao initialization complete!")
         self.tao.cmd("set global lattice_calc_on = F")
+        self.tao.cmd('set global var_out_file = " "')
         self.ctx = Context.instance()
         self.model_broadcast_socket = zmq.Context().socket(zmq.PUB)
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
