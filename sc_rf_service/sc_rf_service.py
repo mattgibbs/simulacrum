@@ -96,6 +96,7 @@ class CavityService(simulacrum.Service):
             return
         elif parameter == "PDES":
             cav_attr = "phi0_err";
+            cavity_pv.phas._data['value'] = value; 
             value = (value - cavity_pv.pdes_i - cavity_pv.pref._data['value'])/360.0;
         elif parameter == "GDES":
             value = (value - cavity_pv.gdes_i)*1e6
