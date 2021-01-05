@@ -20,7 +20,7 @@ model_service_dir = os.path.dirname(os.path.realpath(__file__))
 L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class ModelService:
-    def __init__(self, init_file, name):
+    def __init__(self, init_file, name, enable_jitter=False):
         self.name = name
         tao_lib = os.environ.get('TAO_LIB', '')
         self.tao = pytao.Tao(so_lib=tao_lib)
@@ -32,11 +32,12 @@ class ModelService:
         self.model_broadcast_socket = zmq.Context().socket(zmq.PUB)
         self.model_broadcast_socket.bind("tcp://*:{}".format(os.environ.get('MODEL_BROADCAST_PORT', 66666)))
         self.loop = asyncio.get_event_loop()
-        twiss_table = NTTable([("element", "s"), ("device_name", "s"),
+        self.jitter_enabled = enable_jitter
+        self.twiss_table = NTTable([("element", "s"), ("device_name", "s"),
                                        ("s", "d"), ("length", "d"), ("p0c", "d"),
                                        ("alpha_x", "d"), ("beta_x", "d"), ("eta_x", "d"), ("etap_x", "d"), ("psi_x", "d"),
                                        ("alpha_y", "d"), ("beta_y", "d"), ("eta_y", "d"), ("etap_y", "d"), ("psi_y", "d")])
-        rmat_table = NTTable([("element", "s"), ("device_name", "s"), ("s", "d"), ("length", "d"),
+        self.rmat_table = NTTable([("element", "s"), ("device_name", "s"), ("s", "d"), ("length", "d"),
                               ("r11", "d"), ("r12", "d"), ("r13", "d"), ("r14", "d"), ("r15", "d"), ("r16", "d"),
                               ("r21", "d"), ("r22", "d"), ("r23", "d"), ("r24", "d"), ("r25", "d"), ("r26", "d"),
                               ("r31", "d"), ("r32", "d"), ("r33", "d"), ("r34", "d"), ("r35", "d"), ("r36", "d"),
@@ -44,16 +45,23 @@ class ModelService:
                               ("r51", "d"), ("r52", "d"), ("r53", "d"), ("r54", "d"), ("r55", "d"), ("r56", "d"),
                               ("r61", "d"), ("r62", "d"), ("r63", "d"), ("r64", "d"), ("r65", "d"), ("r66", "d")])
         initial_twiss_table, initial_rmat_table = self.get_twiss_table()
-        self.live_twiss_pv = SharedPV(nt=twiss_table, 
+        sec, nanosec = divmod(float(time.time()), 1.0)
+        initial_twiss_table = self.twiss_table.wrap(initial_twiss_table)
+        initial_twiss_table['timeStamp']['secondsPastEpoch'] = sec
+        initial_twiss_table['timeStamp']['nanoseconds'] = nanosec
+        initial_rmat_table = self.rmat_table.wrap(initial_rmat_table)
+        initial_rmat_table['timeStamp']['secondsPastEpoch'] = sec
+        initial_rmat_table['timeStamp']['nanoseconds'] = nanosec
+        self.live_twiss_pv = SharedPV(nt=self.twiss_table, 
                            initial=initial_twiss_table,
                            loop=self.loop)
-        self.design_twiss_pv = SharedPV(nt=twiss_table, 
+        self.design_twiss_pv = SharedPV(nt=self.twiss_table, 
                            initial=initial_twiss_table,
                            loop=self.loop)
-        self.live_rmat_pv = SharedPV(nt=rmat_table, 
+        self.live_rmat_pv = SharedPV(nt=self.rmat_table, 
                            initial=initial_rmat_table,
                            loop=self.loop)
-        self.design_rmat_pv = SharedPV(nt=rmat_table, 
+        self.design_rmat_pv = SharedPV(nt=self.rmat_table, 
                            initial=initial_rmat_table,
                            loop=self.loop)
         self.recalc_needed = False
@@ -70,6 +78,7 @@ class ModelService:
             zmq_task = self.loop.create_task(self.recv())
             pva_refresh_task = self.loop.create_task(self.refresh_pva_table())
             broadcast_task = self.loop.create_task(self.broadcast_model_changes())
+            jitter_task = self.loop.create_task(self.add_jitter())
             self.loop.run_forever()
         except KeyboardInterrupt:
             L.info("Shutting down Model Service.")
@@ -141,10 +150,28 @@ class ModelService:
         """
         while True:
             if self.pva_needs_refresh:
-                twiss_table, rmat_table = self.get_twiss_table()
-                self.live_twiss_pv.post(twiss_table)
-                self.live_rmat_pv.post(rmat_table)
+                sec, nanosec = divmod(float(time.time()), 1.0)
+                new_twiss_table, new_rmat_table = self.get_twiss_table()
+                new_twiss_table = self.twiss_table.wrap(new_twiss_table)
+                new_twiss_table['timeStamp']['secondsPastEpoch'] = sec
+                new_twiss_table['timeStamp']['nanoseconds'] = nanosec
+                new_rmat_table = self.rmat_table.wrap(new_rmat_table)
+                new_rmat_table['timeStamp']['secondsPastEpoch'] = sec
+                new_rmat_table['timeStamp']['nanoseconds'] = nanosec
+                self.live_twiss_pv.post(new_twiss_table)
+                self.live_rmat_pv.post(new_rmat_table)
                 self.pva_needs_refresh = False
+            await asyncio.sleep(1.0)
+        
+    async def add_jitter(self):
+        while True:
+            if self.jitter_enabled:
+                x0 = np.random.normal(0.0, 0.12*0.001)
+                y0 = np.random.normal(0.0, 0.12*0.001)
+                self.tao.cmd(f"set particle_start x = {x0}")
+                self.tao.cmd(f"set particle_start y = {y0}")
+                self.recalc_needed = True
+                self.need_zmq_broadcast = True
             await asyncio.sleep(1.0)
     
     async def broadcast_model_changes(self):
@@ -169,10 +196,6 @@ class ModelService:
                     self.send_und_twiss()
                 except Exception as e:
                     L.warning("SEND UND TWISS FAILED: %s", e)
-                #try:
-                #    self.send_particle_positions()
-                #except Exception as e:
-                #    L.warning("SEND PARTICLE POSITIONS FAILED %s", e)
 
                 self.need_zmq_broadcast = False
             await asyncio.sleep(0.1)
@@ -213,8 +236,8 @@ class ModelService:
         if "ERROR" in twiss_text[0]:
             twiss_text = self.tao_cmd("show lat -no_label_lines -at alpha_a -at beta_a -at alpha_b -at beta_b BEGUNDS")
         #format to list of comma separated values
-        msg='twiss from get_twiss: {}'.format(twiss_text)
-        L.info(msg)
+        #msg='twiss from get_twiss: {}'.format(twiss_text)
+        #L.info(msg)
         twiss = twiss_text[0].split()
         return twiss
 
@@ -360,8 +383,13 @@ if __name__=="__main__":
         help='Name of a Tao model from either lcls-lattice or lcls-classic-lattice.  Must be one of: ' + 
              'lcls_classic, cu_hxr, cu_spec, cu_sxr, sc_sxr, or sc_hxr'
     )
+    parser.add_argument(
+        '--enable-jitter',
+        action='store_true',
+        help='Apply jitter on every model update tick (10 Hz).  This will significantly increase CPU usage.'
+    )
     model_service_args = parser.parse_args()
     tao_init_file = find_model(model_service_args.model_name)
-    serv = ModelService(init_file=tao_init_file, name=model_service_args.model_name.upper())
+    serv = ModelService(init_file=tao_init_file, name=model_service_args.model_name.upper(), enable_jitter=model_service_args.enable_jitter)
     serv.start()
 
