@@ -10,7 +10,7 @@ import zmq
 from zmq.asyncio import Context
 
 #set up python logger
-#L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
+L = simulacrum.util.SimulacrumLog(os.path.splitext(os.path.basename(__file__))[0], level='INFO')
 
 class CavityPV(PVGroup):
     pdes = pvproperty(value=0.0, name=':PDES', precision=1)  
@@ -65,7 +65,6 @@ def _make_linac_table(init_vals):
         device_name = device[0];
         element = device[1];
         linac_pvs["ACCL:" + section + ":ALL"] = init_vals[device_name][:3] + (element[:-1],)
-    print(linac_pvs)
     return linac_pvs
 
 class CavityService(simulacrum.Service):
@@ -76,14 +75,13 @@ class CavityService(simulacrum.Service):
         self.cmd_socket = zmq.Context().socket(zmq.REQ)
         self.cmd_socket.connect("tcp://127.0.0.1:{}".format(os.environ.get('MODEL_PORT', 12312)))
         init_vals = self.get_cavity_ACTs_from_model()
-        for cavity in init_vals.keys():
-            print(cavity)
         cav_pvs = {device_name: CavityPV(device_name, self.on_cavity_change, initial_values=init_vals[device_name], prefix=device_name) for device_name in init_vals.keys()}
+        #setting up convenient linac section PVs for changing all of the L1B/L2B/L3B cavities simultaneously. 
         linac_init_vals = _make_linac_table(init_vals)
         linac_pvs = {device_name: CavityPV(device_name, self.on_cavity_change, initial_values=linac_init_vals[device_name], prefix=device_name) for device_name in linac_init_vals.keys()}
         self.add_pvs(cav_pvs);
         self.add_pvs(linac_pvs);
-        print("Initialization complete.")
+        L.info("Initialization complete.")
 
     def get_cavity_ACTs_from_model(self):
         init_vals = {}
@@ -106,7 +104,7 @@ class CavityService(simulacrum.Service):
             cav_attr = "is_on";
             value = 'T' if value is 'ON' else 'F' 
         cmd = f'set ele {element} {cav_attr} = {value}'
-        print(cmd)
+        L.debug(cmd)
         self.cmd_socket.send_pyobj({"cmd": "tao", "val": cmd})         
         self.cmd_socket.recv_pyobj()   
 
