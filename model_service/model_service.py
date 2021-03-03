@@ -265,7 +265,7 @@ class ModelService:
         self.model_broadcast_socket.send(orb)
 
     def send_profiles_data(self):
-        twiss_text = self.tao_cmd("show lat -no_label_lines -at beta_a -at beta_b -at e_tot Instrument::OTR*,Instrument::YAG*")
+        twiss_text = self.tao_cmd("show lat -no_label_lines -at beta_a -at beta_b -at e_tot Monitor::OTR*,Monitor::YAG*")
         prof_beta_x = [float(l.split()[5]) for l in twiss_text]
         prof_beta_y = [float(l.split()[6]) for l in twiss_text]
         prof_e = [float(l.split()[7]) for l in twiss_text]
@@ -278,7 +278,7 @@ class ModelService:
         self.model_broadcast_socket.send(prof_data);
 
     def send_particle_positions(self):
-        twiss_text = self.tao_cmd("show lat -no_label_lines -at beta_a -at beta_b -at e_tot Instrument::OTR*,Instrument::YAG*")
+        twiss_text = self.tao_cmd("show lat -no_label_lines -at beta_a -at beta_b -at e_tot Monitor::OTR*,Monitor::YAG*")
         prof_names = [l.split()[1] for l in twiss_text]
         positions_all = {}
         for screen in prof_names:
